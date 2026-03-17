@@ -11,3 +11,4 @@ This repository stores the MySQL schema and setup files for the MySpot project.
 2. Open `schema.sql`
 3. Run the script to create the database
 4. Optionally run `seed.sql`
+(Open the SQL files in MySQL Workbench and hit the lightning bolt)
