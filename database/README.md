@@ -1,15 +1,16 @@
-# MySpot Database
+# Database Setup
 
-This repository stores the MySQL schema and setup files for the MySpot project.
+This folder contains the MySQL schema and setup files for the MySpot project.
 
 ## Files
-- `schema.sql` - creates the schema and tables
-- `seed.sql` - optional sample data
+- `schema.sql` - Creates the database schema and tables
+- `seed.sql` - Optional sample data for testing
 
-## How to use
+## How to Use
+
 1. Open MySQL Workbench
 2. Open `schema.sql`
 3. Run the script to create the database
-4. Optionally run `seed.sql`
+4. (Optional) Open and run `seed.sql` to insert sample data
 
-(Open the SQL files in MySQL Workbench and hit the lightning bolt)
+Note: Click the lightning bolt icon in MySQL Workbench to execute the scripts.
