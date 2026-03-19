@@ -7,3 +7,5 @@
 # Ignore IDE Files
 .vscode/
 .idea/
+.vercel
+.env*.local
