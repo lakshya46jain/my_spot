@@ -1,19 +1,28 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+// 1. Define the shape of your API response
+interface DbData {
+  message: string;
+  database: string;
+  user: string;
+  host: string;
+  version: string;
+}
+
 function App() {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<DbData | null>(null);
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     fetch("/api/db-test")
       .then((res) => res.json())
-      .then((result) => {
+      .then((result: DbData) => {
         setData(result);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
       });

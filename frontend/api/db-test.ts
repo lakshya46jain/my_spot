@@ -1,9 +1,18 @@
 import dotenv from "dotenv";
 import mysql from "mysql2/promise";
+import type { NextApiRequest, NextApiResponse } from "next";
 
 dotenv.config({ path: ".env.local" });
 
-function getDbConfig() {
+interface DbConfig {
+  host: string;
+  port: number;
+  user: string;
+  password?: string;
+  database: string;
+}
+
+function getDbConfig(): DbConfig | null {
   const publicUrl = process.env.MYSQL_PUBLIC_URL;
 
   if (publicUrl) {
@@ -21,8 +30,11 @@ function getDbConfig() {
   return null;
 }
 
-export default async function handler(req, res) {
-  let connection;
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse,
+) {
+  let connection: any;
 
   try {
     const config = getDbConfig();
@@ -37,33 +49,32 @@ export default async function handler(req, res) {
     });
 
     if (!config) {
-      return res.status(500).json({
-        success: false,
-        error: "MYSQL_PUBLIC_URL not found",
-      });
+      return res
+        .status(500)
+        .json({ success: false, error: "MYSQL_PUBLIC_URL not found" });
     }
 
     connection = await mysql.createConnection(config);
 
-    // Only connection + metadata (no tables)
-    const [dbRows] = await connection.query(
+    const [dbRows]: any = await connection.query(
       "SELECT DATABASE() AS database_name",
     );
-    const [versionRows] = await connection.query(
+    const [versionRows]: any = await connection.query(
       "SELECT VERSION() AS db_version",
     );
-    const [userRows] = await connection.query("SELECT USER() AS db_user");
-    const [hostRows] = await connection.query("SELECT @@hostname AS host");
+    const [userRows]: any = await connection.query("SELECT USER() AS db_user");
+    const [hostRows]: any = await connection.query("SELECT @@hostname AS host");
 
     return res.status(200).json({
       success: true,
       message: "Database connection established successfully",
+      // CHANGE: dbRows[0] is correct because [dbRows] already extracted the rows array
       database: dbRows[0]?.database_name ?? "",
       version: versionRows[0]?.db_version ?? "",
       user: userRows[0]?.db_user ?? "",
       host: hostRows[0]?.host ?? "",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("DB TEST ERROR:", error);
 
     return res.status(500).json({
