@@ -70,12 +70,6 @@ While still inside `frontend`, run:
 npm install
 ```
 
-If needed, also install the required packages:
-
-```bash
-npm install mysql2 dotenv
-```
-
 ## 6. Run the local Vercel development server
 
 Start the app with:
@@ -93,22 +87,6 @@ http://localhost:3000
 ```
 
 This page should display the database connection test result.
-
-## 8. Optional: test the API route directly
-
-You can also test the API endpoint directly by visiting:
-
-```text
-http://localhost:3000/api/db-test
-```
-
-If the connection works, it should return JSON showing:
-
-- success status
-- database name
-- MySQL version
-- current user
-- host
 
 ## Notes
 
