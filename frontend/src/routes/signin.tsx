@@ -1,3 +1,4 @@
+import * as React from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AuthCard } from "@/components/AuthCard";
 import { Button } from "@/components/ui/button";
@@ -5,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
+import { loginUser } from "@/server/login-user";
 
 export const Route = createFileRoute("/signin")({
   component: SignInPage,
@@ -14,11 +16,41 @@ function SignInPage() {
   const { loginAsUser } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [rememberMe, setRememberMe] = React.useState(false);
+
+  const [errorMessage, setErrorMessage] = React.useState("");
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Database implementation required here — authenticate user credentials
-    loginAsUser();
-    navigate({ to: "/explore" });
+    setErrorMessage("");
+
+    try {
+      setIsSubmitting(true);
+
+      const result = await loginUser({
+        data: {
+          email,
+          password,
+        },
+      });
+
+      if (result?.success) {
+        loginAsUser(result.user);
+        navigate({ to: "/explore" });
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while signing in.";
+
+      setErrorMessage(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -28,7 +60,10 @@ function SignInPage() {
       footer={
         <span>
           Don't have an account?{" "}
-          <Link to="/register" className="text-primary font-medium hover:underline">
+          <Link
+            to="/register"
+            className="text-primary font-medium hover:underline"
+          >
             Register
           </Link>
         </span>
@@ -36,24 +71,56 @@ function SignInPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-foreground">Email</label>
-          <Input type="email" placeholder="you@example.com" />
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Email
+          </label>
+          <Input
+            type="email"
+            placeholder="you@example.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
         </div>
+
         <div>
-          <label className="mb-1.5 block text-sm font-medium text-foreground">Password</label>
-          <PasswordInput placeholder="Enter your password" />
+          <label className="mb-1.5 block text-sm font-medium text-foreground">
+            Password
+          </label>
+          <PasswordInput
+            placeholder="Enter your password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </div>
+
         <div className="flex items-center justify-between">
           <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <Checkbox />
+            <Checkbox
+              checked={rememberMe}
+              onCheckedChange={(checked) => setRememberMe(checked === true)}
+            />
             Remember me
           </label>
-          <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+
+          <Link
+            to="/forgot-password"
+            className="text-sm text-primary hover:underline"
+          >
             Forgot password?
           </Link>
         </div>
-        <Button type="submit" className="w-full" size="lg">
-          Sign In
+
+        {errorMessage ? (
+          <p className="text-sm font-medium text-destructive">{errorMessage}</p>
+        ) : null}
+
+        <Button
+          type="submit"
+          className="w-full"
+          size="lg"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? "Signing In..." : "Sign In"}
         </Button>
       </form>
     </AuthCard>

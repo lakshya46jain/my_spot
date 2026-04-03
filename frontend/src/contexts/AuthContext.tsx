@@ -1,9 +1,24 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  type ReactNode,
+} from "react";
 
 export type UserRole = "guest" | "authenticated";
 
+export interface AuthUser {
+  userId: number;
+  displayName: string;
+  email: string;
+  roleId: number;
+  roleName: string;
+}
+
 interface AuthState {
-  role: UserRole | null; // null = not yet chosen (landing page)
+  role: UserRole | null;
+  user: AuthUser | null;
   isAuthenticated: boolean;
   isGuest: boolean;
   isLoggedIn: boolean;
@@ -11,7 +26,7 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   loginAsGuest: () => void;
-  loginAsUser: () => void;
+  loginAsUser: (user: AuthUser) => void;
   logout: () => void;
 }
 
@@ -19,20 +34,21 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   const loginAsGuest = useCallback(() => {
-    // Database implementation required here — validate guest session
     setRole("guest");
+    setUser(null);
   }, []);
 
-  const loginAsUser = useCallback(() => {
-    // Database implementation required here — authenticate user credentials
+  const loginAsUser = useCallback((userData: AuthUser) => {
     setRole("authenticated");
+    setUser(userData);
   }, []);
 
   const logout = useCallback(() => {
-    // Database implementation required here — clear session/tokens
     setRole(null);
+    setUser(null);
   }, []);
 
   const isAuthenticated = role !== null;
@@ -41,7 +57,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ role, isAuthenticated, isGuest, isLoggedIn, loginAsGuest, loginAsUser, logout }}
+      value={{
+        role,
+        user,
+        isAuthenticated,
+        isGuest,
+        isLoggedIn,
+        loginAsGuest,
+        loginAsUser,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
