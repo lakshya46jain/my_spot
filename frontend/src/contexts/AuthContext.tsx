@@ -29,6 +29,7 @@ interface AuthState {
 interface AuthContextType extends AuthState {
   loginAsGuest: () => void;
   loginAsUser: (user: AuthUser, rememberMe?: boolean) => void;
+  updateUser: (updates: Partial<AuthUser>) => void;
   logout: () => void;
 }
 
@@ -120,6 +121,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const updateUser = useCallback(
+    (updates: Partial<AuthUser>) => {
+      setUser((currentUser) => {
+        if (!currentUser) return currentUser;
+
+        const nextUser = {
+          ...currentUser,
+          ...updates,
+        };
+
+        if (role === "authenticated") {
+          const stored = safeReadAuthStorage();
+
+          if (stored.role === "authenticated") {
+            safeWriteAuthStorage({
+              role: "authenticated",
+              user: nextUser,
+            });
+          }
+        }
+
+        return nextUser;
+      });
+    },
+    [role],
+  );
+
   const logout = useCallback(() => {
     setRole(null);
     setUser(null);
@@ -141,6 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoggedIn,
         loginAsGuest,
         loginAsUser,
+        updateUser,
         logout,
       }}
     >

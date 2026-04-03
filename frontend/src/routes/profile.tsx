@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { PageTitleBlock } from "@/components/PageTitleBlock";
 import { useAuth } from "@/contexts/AuthContext";
+import { updateProfile } from "@/server/update-profile";
+import { updatePassword } from "@/server/update-password";
 import { Shield } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
@@ -20,10 +22,22 @@ export const Route = createFileRoute("/profile")({
 
 function ProfilePage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const { isHydrated, isLoggedIn, user } = useAuth();
+  const { isHydrated, isLoggedIn, user, updateUser } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordSuccess, setPasswordSuccess] = useState("");
+
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isSavingPassword, setIsSavingPassword] = useState(false);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -60,14 +74,80 @@ function ProfilePage() {
     );
   }
 
-  const handleProfileSave = (e: React.FormEvent) => {
+  const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Database implementation required here — update user profile data
+
+    if (!user) return;
+
+    setProfileError("");
+    setProfileSuccess("");
+
+    try {
+      setIsSavingProfile(true);
+
+      const result = await updateProfile({
+        data: {
+          userId: user.userId,
+          fullName,
+          email,
+        },
+      });
+
+      if (result?.success) {
+        updateUser({
+          displayName: result.user.displayName,
+          email: result.user.email,
+        });
+        setProfileSuccess("Profile updated successfully.");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while updating your profile.";
+
+      setProfileError(message);
+    } finally {
+      setIsSavingProfile(false);
+    }
   };
 
-  const handlePasswordSave = (e: React.FormEvent) => {
+  const handlePasswordSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Database implementation required here — update user password
+
+    if (!user) return;
+
+    setPasswordError("");
+    setPasswordSuccess("");
+
+    try {
+      setIsSavingPassword(true);
+
+      const result = await updatePassword({
+        data: {
+          userId: user.userId,
+          currentPassword,
+          newPassword,
+          confirmNewPassword,
+        },
+      });
+
+      if (result?.success) {
+        setPasswordSuccess("Password updated successfully.");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmNewPassword("");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Something went wrong while updating your password.";
+
+      setPasswordError(message);
+    } finally {
+      setIsSavingPassword(false);
+    }
   };
 
   const handleDeleteAccount = () => {
@@ -125,9 +205,33 @@ function ProfilePage() {
                   />
                 </div>
               </div>
+
+              {profileError ? (
+                <p className="text-sm font-medium text-destructive">
+                  {profileError}
+                </p>
+              ) : null}
+
+              {profileSuccess ? (
+                <p className="text-sm font-medium text-green-600">
+                  {profileSuccess}
+                </p>
+              ) : null}
+
               <div className="flex gap-3">
-                <Button type="submit">Save Changes</Button>
-                <Button type="button" variant="outline">
+                <Button type="submit" disabled={isSavingProfile}>
+                  {isSavingProfile ? "Saving..." : "Save Changes"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setFullName(user?.displayName ?? "");
+                    setEmail(user?.email ?? "");
+                    setProfileError("");
+                    setProfileSuccess("");
+                  }}
+                >
                   Cancel
                 </Button>
               </div>
@@ -157,21 +261,48 @@ function ProfilePage() {
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   Current Password
                 </label>
-                <PasswordInput placeholder="Enter current password" />
+                <PasswordInput
+                  placeholder="Enter current password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   New Password
                 </label>
-                <PasswordInput placeholder="Enter new password" />
+                <PasswordInput
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                />
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-foreground">
                   Confirm New Password
                 </label>
-                <PasswordInput placeholder="Confirm new password" />
+                <PasswordInput
+                  placeholder="Confirm new password"
+                  value={confirmNewPassword}
+                  onChange={(e) => setConfirmNewPassword(e.target.value)}
+                />
               </div>
-              <Button type="submit">Update Password</Button>
+
+              {passwordError ? (
+                <p className="text-sm font-medium text-destructive">
+                  {passwordError}
+                </p>
+              ) : null}
+
+              {passwordSuccess ? (
+                <p className="text-sm font-medium text-green-600">
+                  {passwordSuccess}
+                </p>
+              ) : null}
+
+              <Button type="submit" disabled={isSavingPassword}>
+                {isSavingPassword ? "Updating..." : "Update Password"}
+              </Button>
             </form>
           </SectionCard>
 
