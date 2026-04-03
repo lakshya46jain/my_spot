@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PageContainer } from "@/components/PageContainer";
 import { ProfileHeaderCard } from "@/components/ProfileHeaderCard";
 import { SectionCard } from "@/components/SectionCard";
@@ -20,10 +20,25 @@ export const Route = createFileRoute("/profile")({
 
 function ProfilePage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const { isLoggedIn, user } = useAuth();
+  const { isHydrated, isLoggedIn, user } = useAuth();
 
-  const [fullName, setFullName] = useState(user?.displayName ?? "");
-  const [email, setEmail] = useState(user?.email ?? "");
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState("");
+
+  useEffect(() => {
+    if (!isHydrated) return;
+
+    setFullName(user?.displayName ?? "");
+    setEmail(user?.email ?? "");
+  }, [isHydrated, user]);
+
+  if (!isHydrated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <p className="text-sm text-muted-foreground">Loading profile...</p>
+      </div>
+    );
+  }
 
   // Only authenticated (non-guest) users can view profile
   if (!isLoggedIn) {

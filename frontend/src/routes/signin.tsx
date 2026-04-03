@@ -38,7 +38,7 @@ function SignInPage() {
       });
 
       if (result?.success) {
-        loginAsUser(result.user);
+        loginAsUser(result.user, rememberMe);
         navigate({ to: "/explore" });
       }
     } catch (error) {
