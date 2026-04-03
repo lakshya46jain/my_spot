@@ -18,6 +18,7 @@ export const deleteAccount = createServerFn({ method: "POST" })
       `
       UPDATE users
       SET
+        email = CONCAT('archived+', user_id, '@deleted.myspot'),
         is_active = 0,
         deleted_at = NOW()
       WHERE user_id = ?

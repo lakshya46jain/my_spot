@@ -5,6 +5,7 @@ import { SpotCard } from "@/components/SpotCard";
 import { SpotCardSkeleton } from "@/components/SpotCardSkeleton";
 import { DeleteSpotModal } from "@/components/DeleteSpotModal";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import {
   Compass,
   MapPin,
@@ -60,7 +61,12 @@ function ExplorePage() {
       const result = await getSpots();
       setSpots(result ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(
+        getUserFriendlyErrorMessage(
+          err,
+          "Something went wrong while loading study spots.",
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -80,8 +86,10 @@ function ExplorePage() {
       }
     } catch (err) {
       alert(
-        "Error deleting spot: " +
-          (err instanceof Error ? err.message : "An error occurred"),
+        getUserFriendlyErrorMessage(
+          err,
+          "Something went wrong while deleting the spot.",
+        ),
       );
     }
   };

@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { loginUser } from "@/server/login-user";
 
 export const Route = createFileRoute("/signin")({
@@ -42,12 +43,12 @@ function SignInPage() {
         navigate({ to: "/explore" });
       }
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while signing in.";
-
-      setErrorMessage(message);
+      setErrorMessage(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while signing in.",
+        ),
+      );
     } finally {
       setIsSubmitting(false);
     }

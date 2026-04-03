@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { PageTitleBlock } from "@/components/PageTitleBlock";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { updateProfile } from "@/server/update-profile";
 import { updatePassword } from "@/server/update-password";
 import { deleteAccount } from "@/server/delete-account";
@@ -103,12 +104,12 @@ function ProfilePage() {
         setProfileSuccess("Profile updated successfully.");
       }
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while updating your profile.";
-
-      setProfileError(message);
+      setProfileError(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while updating your profile.",
+        ),
+      );
     } finally {
       setIsSavingProfile(false);
     }
@@ -141,12 +142,12 @@ function ProfilePage() {
         setConfirmNewPassword("");
       }
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while updating your password.";
-
-      setPasswordError(message);
+      setPasswordError(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while updating your password.",
+        ),
+      );
     } finally {
       setIsSavingPassword(false);
     }
@@ -168,7 +169,12 @@ function ProfilePage() {
         navigate({ to: "/" });
       }
     } catch (error) {
-      console.error("Failed to deactivate account:", error);
+      setProfileError(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while deactivating your account.",
+        ),
+      );
     }
   };
 

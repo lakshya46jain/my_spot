@@ -49,11 +49,22 @@ export const registerUser = createServerFn({ method: "POST" })
     const normalizedEmail = data.email.trim().toLowerCase();
     const fullName = data.fullName.trim();
 
+    await db.execute<ResultSetHeader>(
+      `
+      UPDATE users
+      SET email = CONCAT('archived+', user_id, '@deleted.myspot')
+      WHERE email = ?
+        AND is_active = 0
+      `,
+      [normalizedEmail],
+    );
+
     const [existingUsers] = await db.execute<ExistingUserRow[]>(
       `
       SELECT user_id
       FROM users
       WHERE email = ?
+        AND is_active = 1
       LIMIT 1
       `,
       [normalizedEmail],

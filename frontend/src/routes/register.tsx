@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileUpload } from "@/components/FileUpload";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { registerUser } from "@/server/register-user";
 
 export const Route = createFileRoute("/register")({
@@ -52,12 +53,12 @@ function RegisterPage() {
         }, 1000);
       }
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Something went wrong while creating your account.";
-
-      setErrorMessage(message);
+      setErrorMessage(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while creating your account.",
+        ),
+      );
     } finally {
       setIsSubmitting(false);
     }

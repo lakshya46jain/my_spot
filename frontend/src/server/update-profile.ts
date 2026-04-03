@@ -30,7 +30,9 @@ export const updateProfile = createServerFn({ method: "POST" })
       `
       SELECT user_id
       FROM users
-      WHERE email = ? AND user_id <> ?
+      WHERE email = ?
+        AND user_id <> ?
+        AND is_active = 1
       LIMIT 1
       `,
       [normalizedEmail, data.userId],

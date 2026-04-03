@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { createSpot } from "@/server/spots";
 
 export interface CreateSpotData {
@@ -119,7 +120,9 @@ function AddSpotPage() {
         });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred");
+      setError(
+        getUserFriendlyErrorMessage(err, "Something went wrong while adding the spot."),
+      );
     } finally {
       setLoading(false);
     }
