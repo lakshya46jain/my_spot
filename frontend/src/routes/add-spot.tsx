@@ -1,23 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
-<<<<<<< HEAD
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { PlusCircle } from "lucide-react";
 import { useState } from "react";
 import { apiService } from "@/services/api";
-=======
-import { PlaceholderShell } from "@/components/PlaceholderShell";
-import { FloatingRightNav } from "@/components/FloatingRightNav";
-import { PlusCircle, Image, FileText } from "lucide-react";
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
+import type { CreateSpotData } from "@/types/api";
 
 export const Route = createFileRoute("/add-spot")({
   component: AddSpotPage,
 });
 
 function AddSpotPage() {
-<<<<<<< HEAD
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<CreateSpotData>({
     spot_name: '',
     spot_type: '',
     short_description: '',
@@ -31,7 +25,7 @@ function AddSpotPage() {
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
 
-  const handleInputChange = (e) => {
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
@@ -39,7 +33,7 @@ function AddSpotPage() {
     }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -69,20 +63,16 @@ function AddSpotPage() {
         throw new Error(result.error || 'Failed to create spot');
       }
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
   };
 
-=======
-  // Database implementation required here — handle spot submission form
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
   return (
     <>
       <FloatingRightNav />
       <PageContainer>
-<<<<<<< HEAD
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
             <PlusCircle className="h-12 w-12 text-warm-500 mx-auto mb-4" />
@@ -242,34 +232,6 @@ function AddSpotPage() {
             </button>
           </form>
         </div>
-=======
-        <PlaceholderShell
-          title="Add a Study Spot"
-          description="Know a great place to study? Share it with the MySpot community and help others find their perfect space."
-          icon={<PlusCircle className="h-7 w-7 text-warm-500" />}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-9 w-9 rounded-lg bg-warm-200 flex items-center justify-center">
-                  <FileText className="h-4 w-4 text-primary" />
-                </div>
-                <h4 className="font-semibold text-foreground">Spot Details</h4>
-              </div>
-              <p className="text-sm text-muted-foreground">Name, address, hours, noise level, Wi-Fi quality, and available amenities.</p>
-            </div>
-            <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-9 w-9 rounded-lg bg-warm-200 flex items-center justify-center">
-                  <Image className="h-4 w-4 text-primary" />
-                </div>
-                <h4 className="font-semibold text-foreground">Photos & Media</h4>
-              </div>
-              <p className="text-sm text-muted-foreground">Upload photos to give others a feel for the space before they visit.</p>
-            </div>
-          </div>
-        </PlaceholderShell>
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
       </PageContainer>
     </>
   );

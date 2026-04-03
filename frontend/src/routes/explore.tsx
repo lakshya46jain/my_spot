@@ -1,23 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
-<<<<<<< HEAD
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { Compass, MapPin, Star, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { apiService } from "@/services/api";
-=======
-import { PlaceholderShell } from "@/components/PlaceholderShell";
-import { FloatingRightNav } from "@/components/FloatingRightNav";
-import { Compass, TrendingUp, MapPin } from "lucide-react";
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
+import type { Spot } from "@/types/api";
 
 export const Route = createFileRoute("/explore")({
   component: ExplorePage,
 });
 
 function ExplorePage() {
-<<<<<<< HEAD
-  const [spots, setSpots] = useState([]);
+  const [spots, setSpots] = useState<Spot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -30,18 +24,18 @@ function ExplorePage() {
       setLoading(true);
       const result = await apiService.getSpots();
       if (result.success) {
-        setSpots(result.data);
+        setSpots(result.data || []);
       } else {
         throw new Error(result.error || 'Failed to fetch spots');
       }
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteSpot = async (spotId) => {
+  const handleDeleteSpot = async (spotId: number) => {
     if (!confirm('Are you sure you want to delete this spot?')) {
       return;
     }
@@ -55,7 +49,7 @@ function ExplorePage() {
         throw new Error(result.error || 'Failed to delete spot');
       }
     } catch (err) {
-      alert('Error deleting spot: ' + err.message);
+      alert('Error deleting spot: ' + (err instanceof Error ? err.message : 'An error occurred'));
     }
   };
 
@@ -94,14 +88,10 @@ function ExplorePage() {
     );
   }
 
-=======
-  // Database implementation required here — fetch and display study spots
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
   return (
     <>
       <FloatingRightNav />
       <PageContainer>
-<<<<<<< HEAD
         <div className="mb-8">
           <Compass className="h-12 w-12 text-warm-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-foreground text-center mb-2">Explore Study Spots</h1>
@@ -189,34 +179,6 @@ function ExplorePage() {
             ))}
           </div>
         )}
-=======
-        <PlaceholderShell
-          title="Explore Study Spots"
-          description="Discover trending, top-rated, and nearby study locations. Browse by category, vibe, or amenities."
-          icon={<Compass className="h-7 w-7 text-warm-500" />}
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-9 w-9 rounded-lg bg-warm-200 flex items-center justify-center">
-                  <TrendingUp className="h-4 w-4 text-primary" />
-                </div>
-                <h4 className="font-semibold text-foreground">Trending Now</h4>
-              </div>
-              <p className="text-sm text-muted-foreground">See what's popular among students this week — updated in real time.</p>
-            </div>
-            <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="h-9 w-9 rounded-lg bg-warm-200 flex items-center justify-center">
-                  <MapPin className="h-4 w-4 text-primary" />
-                </div>
-                <h4 className="font-semibold text-foreground">Near You</h4>
-              </div>
-              <p className="text-sm text-muted-foreground">Find study spots close to your current location with walking distances.</p>
-            </div>
-          </div>
-        </PlaceholderShell>
->>>>>>> b9298c90421a824c7e118d621c1b65efa58d6a98
       </PageContainer>
     </>
   );
