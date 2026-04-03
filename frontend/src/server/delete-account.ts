@@ -7,10 +7,13 @@ const deleteAccountSchema = z.object({
   userId: z.number().int().positive(),
 });
 
-export const deleteAccount = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = deleteAccountSchema.parse(data);
+type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;
 
+export const deleteAccount = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteAccountInput) =>
+    deleteAccountSchema.parse(input),
+  )
+  .handler(async ({ data }) => {
     await db.execute<ResultSetHeader>(
       `
       UPDATE users
@@ -19,12 +22,11 @@ export const deleteAccount = createServerFn({ method: "POST" }).handler(
         deleted_at = NOW()
       WHERE user_id = ?
       `,
-      [parsed.userId],
+      [data.userId],
     );
 
     return {
       success: true,
       message: "Account deactivated successfully.",
     };
-  },
-);
+  });

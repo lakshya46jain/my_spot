@@ -16,6 +16,8 @@ const createSpotSchema = z.object({
   status: spotStatusSchema.default("active"),
 });
 
+type CreateSpotInput = z.infer<typeof createSpotSchema>;
+
 const updateSpotSchema = z.object({
   spotId: z.number().int().positive(),
   spot_name: z.string().trim().optional(),
@@ -27,9 +29,19 @@ const updateSpotSchema = z.object({
   status: spotStatusSchema.optional(),
 });
 
+type UpdateSpotInput = z.infer<typeof updateSpotSchema>;
+
 const deleteSpotSchema = z.object({
   spotId: z.number().int().positive(),
 });
+
+type DeleteSpotInput = z.infer<typeof deleteSpotSchema>;
+
+const getSpotSchema = z.object({
+  spotId: z.number().int().positive(),
+});
+
+type GetSpotInput = z.infer<typeof getSpotSchema>;
 
 type SpotRow = RowDataPacket & {
   spot_id: number;
@@ -84,14 +96,9 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
   return rows;
 });
 
-export const getSpot = createServerFn({ method: "GET" }).handler(
-  async ({ data }) => {
-    const parsed = z
-      .object({
-        spotId: z.number().int().positive(),
-      })
-      .parse(data);
-
+export const getSpot = createServerFn({ method: "GET" })
+  .inputValidator((input: GetSpotInput) => getSpotSchema.parse(input))
+  .handler(async ({ data }) => {
     const [rows] = await db.execute<SpotRow[]>(
       `
       SELECT
@@ -120,15 +127,13 @@ export const getSpot = createServerFn({ method: "GET" }).handler(
     }
 
     return rows[0];
-  },
-);
+  });
 
-export const createSpot = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = createSpotSchema.parse(data);
-
-    const latitude = parseNullableDecimal(parsed.latitude);
-    const longitude = parseNullableDecimal(parsed.longitude);
+export const createSpot = createServerFn({ method: "POST" })
+  .inputValidator((input: CreateSpotInput) => createSpotSchema.parse(input))
+  .handler(async ({ data }) => {
+    const latitude = parseNullableDecimal(data.latitude);
+    const longitude = parseNullableDecimal(data.longitude);
 
     const [result] = await db.execute<ResultSetHeader>(
       `
@@ -145,14 +150,14 @@ export const createSpot = createServerFn({ method: "POST" }).handler(
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
-        parsed.spot_name.trim(),
-        parsed.spot_type.trim(),
-        parsed.short_description?.trim() || null,
-        parsed.address?.trim() || null,
+        data.spot_name.trim(),
+        data.spot_type.trim(),
+        data.short_description?.trim() || null,
+        data.address?.trim() || null,
         latitude,
         longitude,
-        parsed.userId,
-        parsed.status,
+        data.userId,
+        data.status,
       ],
     );
 
@@ -161,16 +166,14 @@ export const createSpot = createServerFn({ method: "POST" }).handler(
       spotId: result.insertId,
       message: "Spot created successfully.",
     };
-  },
-);
+  });
 
-export const updateSpot = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = updateSpotSchema.parse(data);
-
+export const updateSpot = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdateSpotInput) => updateSpotSchema.parse(input))
+  .handler(async ({ data }) => {
     const [existing] = await db.execute<ExistingSpotRow[]>(
       `SELECT spot_id FROM spots WHERE spot_id = ? LIMIT 1`,
-      [parsed.spotId],
+      [data.spotId],
     );
 
     if (existing.length === 0) {
@@ -180,64 +183,58 @@ export const updateSpot = createServerFn({ method: "POST" }).handler(
     const updates: string[] = [];
     const values: unknown[] = [];
 
-    if (parsed.spot_name !== undefined) {
+    if (data.spot_name !== undefined) {
       updates.push("spot_name = ?");
-      values.push(parsed.spot_name.trim());
+      values.push(data.spot_name.trim());
     }
 
-    if (parsed.spot_type !== undefined) {
+    if (data.spot_type !== undefined) {
       updates.push("spot_type = ?");
-      values.push(parsed.spot_type.trim());
+      values.push(data.spot_type.trim());
     }
 
-    if (parsed.short_description !== undefined) {
+    if (data.short_description !== undefined) {
       updates.push("short_description = ?");
-      values.push(parsed.short_description.trim() || null);
+      values.push(data.short_description.trim() || null);
     }
 
-    if (parsed.address !== undefined) {
+    if (data.address !== undefined) {
       updates.push("address = ?");
-      values.push(parsed.address.trim() || null);
+      values.push(data.address.trim() || null);
     }
 
-    if (parsed.latitude !== undefined) {
+    if (data.latitude !== undefined) {
       updates.push("latitude = ?");
-      values.push(parseNullableDecimal(parsed.latitude));
+      values.push(parseNullableDecimal(data.latitude));
     }
 
-    if (parsed.longitude !== undefined) {
+    if (data.longitude !== undefined) {
       updates.push("longitude = ?");
-      values.push(parseNullableDecimal(parsed.longitude));
+      values.push(parseNullableDecimal(data.longitude));
     }
 
-    if (parsed.status !== undefined) {
+    if (data.status !== undefined) {
       updates.push("status = ?");
-      values.push(parsed.status);
+      values.push(data.status);
     }
 
     updates.push("last_modified = CURRENT_TIMESTAMP");
-    values.push(parsed.spotId);
+    values.push(data.spotId);
 
     await db.execute<ResultSetHeader>(
-      `
-      UPDATE spots
-      SET ${updates.join(", ")}
-      WHERE spot_id = ?
-      `,
-      values,
+      `UPDATE spots SET ${updates.join(", ")} WHERE spot_id = ?`,
+      values as (string | number | null)[],
     );
 
     return {
       success: true,
       message: "Spot updated successfully.",
     };
-  },
-);
+  });
 
-export const deleteSpot = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = deleteSpotSchema.parse(data);
-
+export const deleteSpot = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteSpotInput) => deleteSpotSchema.parse(input))
+  .handler(async ({ data }) => {
     const connection = await db.getConnection();
 
     try {
@@ -245,7 +242,7 @@ export const deleteSpot = createServerFn({ method: "POST" }).handler(
 
       const [existing] = await connection.execute<ExistingSpotRow[]>(
         `SELECT spot_id FROM spots WHERE spot_id = ? LIMIT 1`,
-        [parsed.spotId],
+        [data.spotId],
       );
 
       if (existing.length === 0) {
@@ -253,7 +250,7 @@ export const deleteSpot = createServerFn({ method: "POST" }).handler(
       }
 
       await connection.execute(`DELETE FROM content_report WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.execute(
@@ -263,32 +260,32 @@ export const deleteSpot = createServerFn({ method: "POST" }).handler(
         INNER JOIN reviews r ON cr.review_id = r.review_id
         WHERE r.spot_id = ?
         `,
-        [parsed.spotId],
+        [data.spotId],
       );
 
       await connection.execute(`DELETE FROM favorites WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.execute(`DELETE FROM spot_media WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.execute(`DELETE FROM spot_hours WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.execute(
         `DELETE FROM spot_attributes WHERE spot_id = ?`,
-        [parsed.spotId],
+        [data.spotId],
       );
 
       await connection.execute(`DELETE FROM reviews WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.execute(`DELETE FROM spots WHERE spot_id = ?`, [
-        parsed.spotId,
+        data.spotId,
       ]);
 
       await connection.commit();
@@ -303,5 +300,4 @@ export const deleteSpot = createServerFn({ method: "POST" }).handler(
     } finally {
       connection.release();
     }
-  },
-);
+  });

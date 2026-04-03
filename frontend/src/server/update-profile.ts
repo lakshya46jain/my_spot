@@ -12,16 +12,19 @@ const updateProfileSchema = z.object({
   email: z.string().trim().email("Please enter a valid email address."),
 });
 
+type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+
 type ExistingUserRow = RowDataPacket & {
   user_id: number;
 };
 
-export const updateProfile = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = updateProfileSchema.parse(data);
-
-    const normalizedEmail = parsed.email.trim().toLowerCase();
-    const fullName = parsed.fullName.trim();
+export const updateProfile = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdateProfileInput) =>
+    updateProfileSchema.parse(input),
+  )
+  .handler(async ({ data }) => {
+    const normalizedEmail = data.email.trim().toLowerCase();
+    const fullName = data.fullName.trim();
 
     const [existingUsers] = await db.execute<ExistingUserRow[]>(
       `
@@ -30,7 +33,7 @@ export const updateProfile = createServerFn({ method: "POST" }).handler(
       WHERE email = ? AND user_id <> ?
       LIMIT 1
       `,
-      [normalizedEmail, parsed.userId],
+      [normalizedEmail, data.userId],
     );
 
     if (existingUsers.length > 0) {
@@ -43,17 +46,16 @@ export const updateProfile = createServerFn({ method: "POST" }).handler(
       SET display_name = ?, email = ?
       WHERE user_id = ?
       `,
-      [fullName, normalizedEmail, parsed.userId],
+      [fullName, normalizedEmail, data.userId],
     );
 
     return {
       success: true,
       user: {
-        userId: parsed.userId,
+        userId: data.userId,
         displayName: fullName,
         email: normalizedEmail,
       },
       message: "Profile updated successfully.",
     };
-  },
-);
+  });

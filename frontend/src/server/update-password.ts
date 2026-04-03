@@ -21,15 +21,18 @@ const updatePasswordSchema = z
     }
   });
 
+type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>;
+
 type UserPasswordRow = RowDataPacket & {
   user_id: number;
   password_hash: string;
 };
 
-export const updatePassword = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = updatePasswordSchema.parse(data);
-
+export const updatePassword = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdatePasswordInput) =>
+    updatePasswordSchema.parse(input),
+  )
+  .handler(async ({ data }) => {
     const [rows] = await db.execute<UserPasswordRow[]>(
       `
       SELECT user_id, password_hash
@@ -37,7 +40,7 @@ export const updatePassword = createServerFn({ method: "POST" }).handler(
       WHERE user_id = ?
       LIMIT 1
       `,
-      [parsed.userId],
+      [data.userId],
     );
 
     if (rows.length === 0) {
@@ -47,7 +50,7 @@ export const updatePassword = createServerFn({ method: "POST" }).handler(
     const user = rows[0];
 
     const currentPasswordMatches = await bcrypt.compare(
-      parsed.currentPassword,
+      data.currentPassword,
       user.password_hash,
     );
 
@@ -55,7 +58,7 @@ export const updatePassword = createServerFn({ method: "POST" }).handler(
       throw new Error("Current password is incorrect.");
     }
 
-    const newPasswordHash = await bcrypt.hash(parsed.newPassword, 10);
+    const newPasswordHash = await bcrypt.hash(data.newPassword, 10);
 
     await db.execute<ResultSetHeader>(
       `
@@ -63,12 +66,11 @@ export const updatePassword = createServerFn({ method: "POST" }).handler(
       SET password_hash = ?
       WHERE user_id = ?
       `,
-      [newPasswordHash, parsed.userId],
+      [newPasswordHash, data.userId],
     );
 
     return {
       success: true,
       message: "Password updated successfully.",
     };
-  },
-);
+  });

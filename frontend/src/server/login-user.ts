@@ -9,6 +9,8 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required."),
 });
 
+type LoginInput = z.infer<typeof loginSchema>;
+
 type UserRow = RowDataPacket & {
   user_id: number;
   display_name: string;
@@ -18,10 +20,10 @@ type UserRow = RowDataPacket & {
   role_name: string;
 };
 
-export const loginUser = createServerFn({ method: "POST" }).handler(
-  async ({ data }) => {
-    const parsed = loginSchema.parse(data);
-    const normalizedEmail = parsed.email.trim().toLowerCase();
+export const loginUser = createServerFn({ method: "POST" })
+  .inputValidator((input: LoginInput) => loginSchema.parse(input))
+  .handler(async ({ data }) => {
+    const normalizedEmail = data.email.trim().toLowerCase();
 
     const [rows] = await db.execute<UserRow[]>(
       `
@@ -48,7 +50,7 @@ export const loginUser = createServerFn({ method: "POST" }).handler(
     const user = rows[0];
 
     const passwordMatches = await bcrypt.compare(
-      parsed.password,
+      data.password,
       user.password_hash,
     );
 
@@ -66,5 +68,4 @@ export const loginUser = createServerFn({ method: "POST" }).handler(
         roleName: user.role_name,
       },
     };
-  },
-);
+  });
