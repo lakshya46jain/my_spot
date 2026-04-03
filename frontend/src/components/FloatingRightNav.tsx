@@ -14,10 +14,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const baseNavItems = [
   { to: "/explore", icon: Home, label: "Home", access: "all" as const },
-  { to: "/profile", icon: User, label: "Profile", access: "authenticated" as const },
   { to: "/favorites", icon: Heart, label: "Favorites", access: "all" as const },
   { to: "/add-spot", icon: PlusCircle, label: "Add Spot", access: "all" as const },
   { to: "/admin", icon: Shield, label: "Admin", access: "authenticated" as const },
+  { to: "/profile", icon: User, label: "Profile", access: "authenticated" as const },
 ];
 
 export function FloatingRightNav() {

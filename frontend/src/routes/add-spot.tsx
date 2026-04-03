@@ -3,7 +3,8 @@ import { PageContainer } from "@/components/PageContainer";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { PlusCircle } from "lucide-react";
 import { useState } from "react";
-import { apiService } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
+import { createSpot } from "@/server/spots";
 import type { CreateSpotData } from "@/types/api";
 
 export const Route = createFileRoute("/add-spot")({
@@ -11,59 +12,70 @@ export const Route = createFileRoute("/add-spot")({
 });
 
 function AddSpotPage() {
+  const { user, isLoggedIn } = useAuth();
+
   const [formData, setFormData] = useState<CreateSpotData>({
-    spot_name: '',
-    spot_type: '',
-    short_description: '',
-    address: '',
-    latitude: '',
-    longitude: '',
-    status: 'active'
+    spot_name: "",
+    spot_type: "",
+    short_description: "",
+    address: "",
+    latitude: "",
+    longitude: "",
+    status: "active",
   });
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [error, setError] = useState('');
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >,
+  ) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: value
+      [name]: value,
     }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
-    setMessage('');
+    setError("");
+    setMessage("");
 
     try {
-      // Validate required fields
-      if (!formData.spot_name || !formData.spot_type) {
-        throw new Error('Spot name and type are required');
+      if (!isLoggedIn || !user) {
+        throw new Error("You must be signed in to add a spot.");
       }
 
-      const result = await apiService.createSpot(formData);
+      if (!formData.spot_name || !formData.spot_type) {
+        throw new Error("Spot name and type are required");
+      }
 
-      if (result.success) {
-        setMessage('Spot created successfully!');
-        // Reset form
+      const result = await createSpot({
+        data: {
+          userId: user.userId,
+          ...formData,
+        },
+      });
+
+      if (result?.success) {
+        setMessage("Spot created successfully!");
         setFormData({
-          spot_name: '',
-          spot_type: '',
-          short_description: '',
-          address: '',
-          latitude: '',
-          longitude: '',
-          status: 'active'
+          spot_name: "",
+          spot_type: "",
+          short_description: "",
+          address: "",
+          latitude: "",
+          longitude: "",
+          status: "active",
         });
-      } else {
-        throw new Error(result.error || 'Failed to create spot');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -76,7 +88,9 @@ function AddSpotPage() {
         <div className="max-w-2xl mx-auto">
           <div className="text-center mb-8">
             <PlusCircle className="h-12 w-12 text-warm-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-foreground mb-2">Add a Study Spot</h1>
+            <h1 className="text-3xl font-bold text-foreground mb-2">
+              Add a Study Spot
+            </h1>
             <p className="text-muted-foreground">
               Know a great place to study? Share it with the MySpot community.
             </p>
@@ -86,7 +100,10 @@ function AddSpotPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Spot Name */}
               <div className="md:col-span-2">
-                <label htmlFor="spot_name" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="spot_name"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Spot Name *
                 </label>
                 <input
@@ -103,7 +120,10 @@ function AddSpotPage() {
 
               {/* Spot Type */}
               <div>
-                <label htmlFor="spot_type" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="spot_type"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Spot Type *
                 </label>
                 <select
@@ -126,7 +146,10 @@ function AddSpotPage() {
 
               {/* Status */}
               <div>
-                <label htmlFor="status" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="status"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Status
                 </label>
                 <select
@@ -144,7 +167,10 @@ function AddSpotPage() {
 
               {/* Description */}
               <div className="md:col-span-2">
-                <label htmlFor="short_description" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="short_description"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Description
                 </label>
                 <textarea
@@ -160,7 +186,10 @@ function AddSpotPage() {
 
               {/* Address */}
               <div className="md:col-span-2">
-                <label htmlFor="address" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="address"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Address
                 </label>
                 <input
@@ -176,7 +205,10 @@ function AddSpotPage() {
 
               {/* Latitude */}
               <div>
-                <label htmlFor="latitude" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="latitude"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Latitude
                 </label>
                 <input
@@ -193,7 +225,10 @@ function AddSpotPage() {
 
               {/* Longitude */}
               <div>
-                <label htmlFor="longitude" className="block text-sm font-medium text-foreground mb-2">
+                <label
+                  htmlFor="longitude"
+                  className="block text-sm font-medium text-foreground mb-2"
+                >
                   Longitude
                 </label>
                 <input
@@ -228,7 +263,7 @@ function AddSpotPage() {
               disabled={loading}
               className="w-full bg-warm-500 hover:bg-warm-600 disabled:bg-gray-400 text-white font-medium py-3 px-6 rounded-lg transition-colors duration-200"
             >
-              {loading ? 'Creating Spot...' : 'Add Study Spot'}
+              {loading ? "Creating Spot..." : "Add Study Spot"}
             </button>
           </form>
         </div>

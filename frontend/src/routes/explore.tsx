@@ -1,9 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
-import { Compass, MapPin, Star, Clock } from "lucide-react";
+import { Compass, MapPin, Clock } from "lucide-react";
 import { useState, useEffect } from "react";
-import { apiService } from "@/services/api";
+import { getSpots, deleteSpot } from "@/server/spots";
 import type { Spot } from "@/types/api";
 
 export const Route = createFileRoute("/explore")({
@@ -13,7 +13,7 @@ export const Route = createFileRoute("/explore")({
 function ExplorePage() {
   const [spots, setSpots] = useState<Spot[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
 
   useEffect(() => {
     fetchSpots();
@@ -22,34 +22,36 @@ function ExplorePage() {
   const fetchSpots = async () => {
     try {
       setLoading(true);
-      const result = await apiService.getSpots();
-      if (result.success) {
-        setSpots(result.data || []);
-      } else {
-        throw new Error(result.error || 'Failed to fetch spots');
-      }
+      setError("");
+      const result = await getSpots();
+      setSpots(result ?? []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
   };
 
   const handleDeleteSpot = async (spotId: number) => {
-    if (!confirm('Are you sure you want to delete this spot?')) {
+    if (!confirm("Are you sure you want to delete this spot?")) {
       return;
     }
 
     try {
-      const result = await apiService.deleteSpot(spotId);
-      if (result.success) {
-        // Remove the spot from the local state
-        setSpots(prev => prev.filter(spot => spot.spot_id !== spotId));
-      } else {
-        throw new Error(result.error || 'Failed to delete spot');
+      const result = await deleteSpot({
+        data: {
+          spotId,
+        },
+      });
+
+      if (result?.success) {
+        setSpots((prev) => prev.filter((spot) => spot.spot_id !== spotId));
       }
     } catch (err) {
-      alert('Error deleting spot: ' + (err instanceof Error ? err.message : 'An error occurred'));
+      alert(
+        "Error deleting spot: " +
+          (err instanceof Error ? err.message : "An error occurred"),
+      );
     }
   };
 
@@ -94,7 +96,9 @@ function ExplorePage() {
       <PageContainer>
         <div className="mb-8">
           <Compass className="h-12 w-12 text-warm-500 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-foreground text-center mb-2">Explore Study Spots</h1>
+          <h1 className="text-3xl font-bold text-foreground text-center mb-2">
+            Explore Study Spots
+          </h1>
           <p className="text-muted-foreground text-center">
             Discover trending, top-rated, and nearby study locations.
           </p>
@@ -104,7 +108,9 @@ function ExplorePage() {
           <div className="text-center py-12">
             <div className="p-8 bg-card border border-border rounded-2xl max-w-md mx-auto">
               <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-foreground mb-2">No spots yet</h3>
+              <h3 className="text-lg font-semibold text-foreground mb-2">
+                No spots yet
+              </h3>
               <p className="text-muted-foreground mb-4">
                 Be the first to add a study spot to the community!
               </p>
@@ -119,7 +125,10 @@ function ExplorePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {spots.map((spot) => (
-              <div key={spot.spot_id} className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow">
+              <div
+                key={spot.spot_id}
+                className="bg-card border border-border rounded-2xl p-6 shadow-sm hover:shadow-md transition-shadow"
+              >
                 <div className="flex items-start justify-between mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-foreground mb-1">
@@ -129,13 +138,15 @@ function ExplorePage() {
                       {spot.spot_type}
                     </p>
                   </div>
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    spot.status === 'active'
-                      ? 'bg-green-100 text-green-800'
-                      : spot.status === 'inactive'
-                      ? 'bg-gray-100 text-gray-800'
-                      : 'bg-yellow-100 text-yellow-800'
-                  }`}>
+                  <span
+                    className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      spot.status === "active"
+                        ? "bg-green-100 text-green-800"
+                        : spot.status === "inactive"
+                          ? "bg-gray-100 text-gray-800"
+                          : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
                     {spot.status}
                   </span>
                 </div>
@@ -149,7 +160,9 @@ function ExplorePage() {
                 {spot.address && (
                   <div className="flex items-center gap-2 mb-3">
                     <MapPin className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm text-muted-foreground">{spot.address}</p>
+                    <p className="text-sm text-muted-foreground">
+                      {spot.address}
+                    </p>
                   </div>
                 )}
 
@@ -162,7 +175,9 @@ function ExplorePage() {
                   </div>
                   <div className="flex gap-2">
                     <button
-                      onClick={() => {/* TODO: Implement edit */}}
+                      onClick={() => {
+                        /* TODO: Implement edit */
+                      }}
                       className="px-3 py-1 text-xs bg-blue-100 text-blue-800 rounded hover:bg-blue-200"
                     >
                       Edit
