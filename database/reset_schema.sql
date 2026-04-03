@@ -36,10 +36,13 @@ CREATE TABLE users (
     password_hash VARCHAR(255) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login DATETIME DEFAULT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    deleted_at DATETIME DEFAULT NULL,
     role_id INT NOT NULL,
     PRIMARY KEY (user_id),
     UNIQUE KEY uq_users_email (email),
     KEY fk_users_role (role_id),
+    KEY idx_users_is_active (is_active),
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles (role_id)
 );

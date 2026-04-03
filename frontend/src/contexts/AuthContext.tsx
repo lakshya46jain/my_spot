@@ -1,9 +1,26 @@
-import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useEffect,
+  type ReactNode,
+} from "react";
 
 export type UserRole = "guest" | "authenticated";
 
+export interface AuthUser {
+  userId: number;
+  displayName: string;
+  email: string;
+  roleId: number;
+  roleName: string;
+}
+
 interface AuthState {
-  role: UserRole | null; // null = not yet chosen (landing page)
+  role: UserRole | null;
+  user: AuthUser | null;
+  isHydrated: boolean;
   isAuthenticated: boolean;
   isGuest: boolean;
   isLoggedIn: boolean;
@@ -11,28 +28,130 @@ interface AuthState {
 
 interface AuthContextType extends AuthState {
   loginAsGuest: () => void;
-  loginAsUser: () => void;
+  loginAsUser: (user: AuthUser, rememberMe?: boolean) => void;
+  updateUser: (updates: Partial<AuthUser>) => void;
   logout: () => void;
 }
 
+const AUTH_STORAGE_KEY = "myspot-auth";
+
 const AuthContext = createContext<AuthContextType | null>(null);
+
+function safeReadAuthStorage(): {
+  role: UserRole | null;
+  user: AuthUser | null;
+} {
+  if (typeof window === "undefined") {
+    return { role: null, user: null };
+  }
+
+  try {
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+
+    if (!raw) {
+      return { role: null, user: null };
+    }
+
+    const parsed = JSON.parse(raw) as {
+      role: UserRole | null;
+      user: AuthUser | null;
+    };
+
+    return {
+      role: parsed.role ?? null,
+      user: parsed.user ?? null,
+    };
+  } catch {
+    return { role: null, user: null };
+  }
+}
+
+function safeWriteAuthStorage(payload: {
+  role: UserRole | null;
+  user: AuthUser | null;
+}) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function safeClearAuthStorage() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.removeItem(AUTH_STORAGE_KEY);
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    const stored = safeReadAuthStorage();
+    setRole(stored.role);
+    setUser(stored.user);
+    setIsHydrated(true);
+  }, []);
 
   const loginAsGuest = useCallback(() => {
-    // Database implementation required here — validate guest session
     setRole("guest");
+    setUser(null);
+    safeClearAuthStorage();
   }, []);
 
-  const loginAsUser = useCallback(() => {
-    // Database implementation required here — authenticate user credentials
+  const loginAsUser = useCallback((userData: AuthUser, rememberMe = false) => {
     setRole("authenticated");
+    setUser(userData);
+
+    if (rememberMe) {
+      safeWriteAuthStorage({
+        role: "authenticated",
+        user: userData,
+      });
+    } else {
+      safeClearAuthStorage();
+    }
   }, []);
+
+  const updateUser = useCallback(
+    (updates: Partial<AuthUser>) => {
+      setUser((currentUser) => {
+        if (!currentUser) return currentUser;
+
+        const nextUser = {
+          ...currentUser,
+          ...updates,
+        };
+
+        if (role === "authenticated") {
+          const stored = safeReadAuthStorage();
+
+          if (stored.role === "authenticated") {
+            safeWriteAuthStorage({
+              role: "authenticated",
+              user: nextUser,
+            });
+          }
+        }
+
+        return nextUser;
+      });
+    },
+    [role],
+  );
 
   const logout = useCallback(() => {
-    // Database implementation required here — clear session/tokens
     setRole(null);
+    setUser(null);
+    safeClearAuthStorage();
   }, []);
 
   const isAuthenticated = role !== null;
@@ -41,7 +160,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ role, isAuthenticated, isGuest, isLoggedIn, loginAsGuest, loginAsUser, logout }}
+      value={{
+        role,
+        user,
+        isHydrated,
+        isAuthenticated,
+        isGuest,
+        isLoggedIn,
+        loginAsGuest,
+        loginAsUser,
+        updateUser,
+        logout,
+      }}
     >
       {children}
     </AuthContext.Provider>
