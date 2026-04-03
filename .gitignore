@@ -1,4 +1,11 @@
-node_modules/
-.env
-dist/
-build/
+# Ignore Mac System Files
+.DS_Store
+
+# Ignore Environment Variables
+.env 
+
+# Ignore IDE Files
+.vscode/
+.idea/
+.vercel
+.env*.local
