@@ -20,7 +20,10 @@ export const Route = createFileRoute("/profile")({
 
 function ProfilePage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+
+  const [fullName, setFullName] = useState(user?.displayName ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
 
   // Only authenticated (non-guest) users can view profile
   if (!isLoggedIn) {
@@ -28,7 +31,9 @@ function ProfilePage() {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center max-w-md">
           <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-          <h2 className="text-xl font-display text-foreground mb-2">Sign In Required</h2>
+          <h2 className="text-xl font-display text-foreground mb-2">
+            Sign In Required
+          </h2>
           <p className="text-sm text-muted-foreground mb-6">
             You need to be signed in to view your profile.
           </p>
@@ -59,41 +64,66 @@ function ProfilePage() {
     <>
       <FloatingRightNav />
       <PageContainer>
-        <PageTitleBlock title="Your Profile" subtitle="Manage your account details, profile photo, and security settings." />
+        <PageTitleBlock
+          title="Your Profile"
+          subtitle="Manage your account details, profile photo, and security settings."
+        />
 
         <div className="space-y-6">
           {/* Profile Header */}
           <ProfileHeaderCard
-            name="Your Name"
-            email="you@example.com"
-            badge="Student"
+            name={user?.displayName ?? "Your Name"}
+            email={user?.email ?? "you@example.com"}
+            badge={user?.roleName ?? "Student"}
             onAvatarChange={() => {
               // Database implementation required here — upload new avatar
             }}
           />
 
           {/* Edit Profile */}
-          <SectionCard title="Personal Information" description="Update your name and email address.">
+          <SectionCard
+            title="Personal Information"
+            description="Update your name and email address."
+          >
             <form onSubmit={handleProfileSave} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">Full Name</label>
-                  <Input type="text" placeholder="Your Name" defaultValue="" />
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">
+                    Full Name
+                  </label>
+                  <Input
+                    type="text"
+                    placeholder="Your Name"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
                 </div>
                 <div>
-                  <label className="mb-1.5 block text-sm font-medium text-foreground">Email</label>
-                  <Input type="email" placeholder="you@example.com" defaultValue="" />
+                  <label className="mb-1.5 block text-sm font-medium text-foreground">
+                    Email
+                  </label>
+                  <Input
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
               </div>
               <div className="flex gap-3">
                 <Button type="submit">Save Changes</Button>
-                <Button type="button" variant="outline">Cancel</Button>
+                <Button type="button" variant="outline">
+                  Cancel
+                </Button>
               </div>
             </form>
           </SectionCard>
 
           {/* Profile Photo */}
-          <SectionCard title="Profile Photo" description="Upload or change your profile picture.">
+          <SectionCard
+            title="Profile Photo"
+            description="Upload or change your profile picture."
+          >
             <FileUpload
               onFileSelect={(file) => {
                 // Database implementation required here — upload profile photo to storage
@@ -103,18 +133,27 @@ function ProfilePage() {
           </SectionCard>
 
           {/* Password */}
-          <SectionCard title="Password" description="Update your password to keep your account secure.">
+          <SectionCard
+            title="Password"
+            description="Update your password to keep your account secure."
+          >
             <form onSubmit={handlePasswordSave} className="space-y-4 max-w-md">
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">Current Password</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">
+                  Current Password
+                </label>
                 <PasswordInput placeholder="Enter current password" />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">New Password</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">
+                  New Password
+                </label>
                 <PasswordInput placeholder="Enter new password" />
               </div>
               <div>
-                <label className="mb-1.5 block text-sm font-medium text-foreground">Confirm New Password</label>
+                <label className="mb-1.5 block text-sm font-medium text-foreground">
+                  Confirm New Password
+                </label>
                 <PasswordInput placeholder="Confirm new password" />
               </div>
               <Button type="submit">Update Password</Button>
@@ -126,7 +165,10 @@ function ProfilePage() {
             title="Delete Account"
             description="Permanently delete your account and all associated data. This action cannot be undone."
           >
-            <Button variant="danger-outline" onClick={() => setDeleteModalOpen(true)}>
+            <Button
+              variant="danger-outline"
+              onClick={() => setDeleteModalOpen(true)}
+            >
               Delete My Account
             </Button>
           </DangerZoneCard>
