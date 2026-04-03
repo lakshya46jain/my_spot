@@ -39,12 +39,20 @@ INSERT INTO attribute_menu (attribute_id, name) VALUES
 -- ======================
 -- USERS
 -- ======================
-INSERT INTO users (user_id, display_name, email, password_hash, role_id) VALUES
-(1, 'Liam Erickson', 'liam@vt.edu', 'hash1', 1),
-(2, 'Sarah Collins', 'sarah@vt.edu', 'hash2', 2),
-(3, 'Marcus Lee', 'marcus@vt.edu', 'hash3', 3),
-(4, 'Emma Carter', 'emma@vt.edu', 'hash4', 2),
-(5, 'Noah Bennett', 'noah@vt.edu', 'hash5', 4);
+INSERT INTO users (
+    user_id,
+    display_name,
+    email,
+    password_hash,
+    is_active,
+    deleted_at,
+    role_id
+) VALUES
+(1, 'Liam Erickson', 'liam@vt.edu', 'hash1', 1, NULL, 1),
+(2, 'Sarah Collins', 'sarah@vt.edu', 'hash2', 1, NULL, 2),
+(3, 'Marcus Lee', 'marcus@vt.edu', 'hash3', 1, NULL, 3),
+(4, 'Emma Carter', 'emma@vt.edu', 'hash4', 1, NULL, 2),
+(5, 'Noah Bennett', 'noah@vt.edu', 'hash5', 1, NULL, 4);
 
 -- ======================
 -- SPOTS

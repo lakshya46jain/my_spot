@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { PageContainer } from "@/components/PageContainer";
 import { ProfileHeaderCard } from "@/components/ProfileHeaderCard";
@@ -14,6 +14,7 @@ import { PageTitleBlock } from "@/components/PageTitleBlock";
 import { useAuth } from "@/contexts/AuthContext";
 import { updateProfile } from "@/server/update-profile";
 import { updatePassword } from "@/server/update-password";
+import { deleteAccount } from "@/server/delete-account";
 import { Shield } from "lucide-react";
 
 export const Route = createFileRoute("/profile")({
@@ -21,8 +22,9 @@ export const Route = createFileRoute("/profile")({
 });
 
 function ProfilePage() {
+  const navigate = useNavigate();
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const { isHydrated, isLoggedIn, user, updateUser } = useAuth();
+  const { isHydrated, isLoggedIn, user, updateUser, logout } = useAuth();
 
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -150,9 +152,24 @@ function ProfilePage() {
     }
   };
 
-  const handleDeleteAccount = () => {
-    // Database implementation required here — delete user account and all associated data
-    console.log("Account deletion confirmed");
+  const handleDeleteAccount = async () => {
+    if (!user) return;
+
+    try {
+      const result = await deleteAccount({
+        data: {
+          userId: user.userId,
+        },
+      });
+
+      if (result?.success) {
+        setDeleteModalOpen(false);
+        logout();
+        navigate({ to: "/" });
+      }
+    } catch (error) {
+      console.error("Failed to deactivate account:", error);
+    }
   };
 
   return (

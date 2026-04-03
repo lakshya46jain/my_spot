@@ -35,6 +35,7 @@ export const loginUser = createServerFn({ method: "POST" }).handler(
       FROM users u
       INNER JOIN roles r ON u.role_id = r.role_id
       WHERE u.email = ?
+        AND u.is_active = 1
       LIMIT 1
       `,
       [normalizedEmail],
