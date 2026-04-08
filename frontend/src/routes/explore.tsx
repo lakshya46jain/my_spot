@@ -6,6 +6,7 @@ import { SpotCardSkeleton } from "@/components/SpotCardSkeleton";
 import { DeleteSpotModal } from "@/components/DeleteSpotModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
+import type { Spot } from "@/types/api";
 import {
   Compass,
   MapPin,
@@ -20,22 +21,7 @@ import { useState, useEffect } from "react";
 import { getSpots, deleteSpot } from "@/server/spots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Link } from "@tanstack/react-router";
-
-export interface Spot {
-  spot_id: number;
-  spot_name: string;
-  spot_type: string;
-  short_description: string | null;
-  address: string | null;
-  latitude: number | null;
-  longitude: number | null;
-  status: "active" | "inactive" | "pending";
-  created_at: string;
-  last_modified: string | null;
-  creator_name: string;
-  user_id: number;
-}
+import { Link, useNavigate } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/explore")({
   component: ExplorePage,
@@ -46,8 +32,6 @@ function ExplorePage() {
   const [spots, setSpots] = useState<Spot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
-  // Delete modal state
   const [deleteTarget, setDeleteTarget] = useState<Spot | null>(null);
 
   useEffect(() => {
@@ -75,11 +59,8 @@ function ExplorePage() {
   const handleDeleteSpot = async (spotId: number) => {
     try {
       const result = await deleteSpot({
-        data: {
-          spotId,
-        },
+        data: { spotId },
       });
-
       if (result?.success) {
         setSpots((prev) => prev.filter((spot) => spot.spot_id !== spotId));
         setDeleteTarget(null);
@@ -92,6 +73,12 @@ function ExplorePage() {
         ),
       );
     }
+  };
+
+  const navigate = useNavigate();
+
+  const handleViewDetails = (spotId: number) => {
+    navigate({ to: "/spot/$spotId", params: { spotId: String(spotId) } });
   };
 
   return (
@@ -113,7 +100,6 @@ function ExplorePage() {
         {/* Search & Filter Bar */}
         <div className="rounded-2xl border border-border bg-card p-4 shadow-sm mb-8">
           <div className="flex flex-col lg:flex-row gap-3">
-            {/* Location search */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -123,8 +109,6 @@ function ExplorePage() {
                 // TODO: Wire search to filter getSpots results or add server-side search
               />
             </div>
-
-            {/* Use current location */}
             <Button
               variant="outline"
               className="h-11 rounded-xl gap-2 shrink-0"
@@ -135,8 +119,6 @@ function ExplorePage() {
               <Navigation className="h-4 w-4" />
               <span className="hidden sm:inline">Current Location</span>
             </Button>
-
-            {/* Radius selector */}
             <div className="flex items-center gap-2 shrink-0">
               <MapPin className="h-4 w-4 text-muted-foreground" />
               <select
@@ -151,8 +133,6 @@ function ExplorePage() {
                 <option value="25">25 miles</option>
               </select>
             </div>
-
-            {/* Filter button */}
             <Button
               variant="outline"
               className="h-11 rounded-xl gap-2 shrink-0"
@@ -163,8 +143,6 @@ function ExplorePage() {
               <SlidersHorizontal className="h-4 w-4" />
               Filters
             </Button>
-
-            {/* Sort dropdown */}
             <div className="flex items-center gap-2 shrink-0">
               <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
               <select
@@ -222,7 +200,6 @@ function ExplorePage() {
           </div>
         ) : (
           <>
-            {/* Spot grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {spots.map((spot) => (
                 <SpotCard
@@ -238,15 +215,11 @@ function ExplorePage() {
                     // TODO: Navigate to edit page or open edit modal
                     console.log("Edit spot:", spotId);
                   }}
-                  onViewDetails={(spotId) => {
-                    // TODO: Navigate to spot detail page when implemented
-                    console.log("View details:", spotId);
-                  }}
+                  onViewDetails={handleViewDetails}
                 />
               ))}
             </div>
 
-            {/* Results footer */}
             <div className="mt-8 text-center">
               <p className="text-sm text-muted-foreground">
                 Showing{" "}
@@ -259,7 +232,6 @@ function ExplorePage() {
           </>
         )}
 
-        {/* Delete modal */}
         {deleteTarget && (
           <DeleteSpotModal
             open={!!deleteTarget}

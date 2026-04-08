@@ -19,6 +19,7 @@ import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AddSpotRouteImport } from './routes/add-spot'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as SpotSpotIdRouteImport } from './routes/spot.$spotId'
 
 const UpdatePasswordRoute = UpdatePasswordRouteImport.update({
   id: '/update-password',
@@ -70,6 +71,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SpotSpotIdRoute = SpotSpotIdRouteImport.update({
+  id: '/spot/$spotId',
+  path: '/spot/$spotId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -82,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -121,6 +130,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/spot/$spotId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -133,6 +143,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/spot/$spotId'
   id:
     | '__root__'
     | '/'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/spot/$spotId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -158,6 +170,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   SigninRoute: typeof SigninRoute
   UpdatePasswordRoute: typeof UpdatePasswordRoute
+  SpotSpotIdRoute: typeof SpotSpotIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -232,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/spot/$spotId': {
+      id: '/spot/$spotId'
+      path: '/spot/$spotId'
+      fullPath: '/spot/$spotId'
+      preLoaderRoute: typeof SpotSpotIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -246,6 +266,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   SigninRoute: SigninRoute,
   UpdatePasswordRoute: UpdatePasswordRoute,
+  SpotSpotIdRoute: SpotSpotIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
