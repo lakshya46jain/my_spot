@@ -22,11 +22,13 @@ const baseNavItems = [
 
 export function FloatingRightNav() {
   const location = useLocation();
-  const { isLoggedIn, isGuest, logout } = useAuth();
+  const { isLoggedIn, isGuest, logout, user } = useAuth();
+  const canAccessAdmin = user?.roleId === 1 || user?.roleId === 2;
 
   // Filter nav items based on role
   const navItems = baseNavItems.filter((item) => {
     if (item.access === "authenticated" && !isLoggedIn) return false;
+    if (item.to === "/admin" && !canAccessAdmin) return false;
     return true;
   });
 

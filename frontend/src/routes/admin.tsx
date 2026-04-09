@@ -12,10 +12,9 @@ export const Route = createFileRoute("/admin")({
 });
 
 function AdminPage() {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
+  const canAccessAdmin = user?.roleId === 1 || user?.roleId === 2;
 
-  // Database implementation required here — verify admin role before rendering
-  // Only authenticated (non-guest) users can view admin
   if (!isLoggedIn) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -27,6 +26,23 @@ function AdminPage() {
           </p>
           <Button asChild>
             <Link to="/signin">Sign In</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canAccessAdmin) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="text-center max-w-md">
+          <Shield className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-xl font-display text-foreground mb-2">Access Restricted</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Your account does not have permission to access the admin dashboard.
+          </p>
+          <Button asChild>
+            <Link to="/explore">Back to Explore</Link>
           </Button>
         </div>
       </div>
