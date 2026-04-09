@@ -43,6 +43,15 @@ const getSpotSchema = z.object({
 
 type GetSpotInput = z.infer<typeof getSpotSchema>;
 
+const searchSpotsSchema = z.object({
+  query: z.string().trim().optional().default(""),
+  latitude: z.number().finite().optional(),
+  longitude: z.number().finite().optional(),
+  radiusMiles: z.number().positive().max(100).optional().default(5),
+});
+
+type SearchSpotsInput = z.infer<typeof searchSpotsSchema>;
+
 type SpotRow = RowDataPacket & {
   spot_id: number;
   spot_name: string;
@@ -56,6 +65,7 @@ type SpotRow = RowDataPacket & {
   last_modified: string | null;
   creator_name: string;
   user_id: number;
+  distance_miles?: number | null;
 };
 
 type ExistingSpotRow = RowDataPacket & {
@@ -95,6 +105,86 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
 
   return rows;
 });
+
+export const searchSpots = createServerFn({ method: "POST" })
+  .inputValidator((input: SearchSpotsInput) => searchSpotsSchema.parse(input))
+  .handler(async ({ data }) => {
+    const hasCoordinates =
+      data.latitude !== undefined && data.longitude !== undefined;
+    const hasQuery = data.query.trim().length > 0;
+
+    const distanceSql = hasCoordinates
+      ? `
+        3959 * ACOS(
+          LEAST(
+            1,
+            COS(RADIANS(?)) * COS(RADIANS(s.latitude)) *
+            COS(RADIANS(s.longitude) - RADIANS(?)) +
+            SIN(RADIANS(?)) * SIN(RADIANS(s.latitude))
+          )
+        )
+      `
+      : "NULL";
+
+    const params: unknown[] = [];
+    if (hasCoordinates) {
+      params.push(data.latitude, data.longitude, data.latitude);
+    }
+
+    let sql = `
+      SELECT
+        s.spot_id,
+        s.spot_name,
+        s.spot_type,
+        s.short_description,
+        s.address,
+        s.latitude,
+        s.longitude,
+        s.status,
+        s.created_at,
+        s.last_modified,
+        s.user_id,
+        u.display_name AS creator_name,
+        ${distanceSql} AS distance_miles
+      FROM spots s
+      JOIN users u ON s.user_id = u.user_id
+      WHERE 1 = 1
+    `;
+
+    if (hasQuery) {
+      sql += `
+        AND (
+          s.spot_name LIKE ?
+          OR s.spot_type LIKE ?
+          OR s.address LIKE ?
+        )
+      `;
+
+      const searchTerm = `%${data.query.trim()}%`;
+      params.push(searchTerm, searchTerm, searchTerm);
+    }
+
+    if (hasCoordinates) {
+      sql += `
+        AND s.latitude IS NOT NULL
+        AND s.longitude IS NOT NULL
+      `;
+      sql += `
+        HAVING distance_miles <= ?
+      `;
+      params.push(data.radiusMiles);
+      sql += `
+        ORDER BY distance_miles ASC, s.created_at DESC
+      `;
+    } else {
+      sql += `
+        ORDER BY s.created_at DESC
+      `;
+    }
+
+    const [rows] = await db.execute<SpotRow[]>(sql, params);
+    return rows;
+  });
 
 export const getSpot = createServerFn({ method: "GET" })
   .inputValidator((input: GetSpotInput) => getSpotSchema.parse(input))

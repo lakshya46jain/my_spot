@@ -6,6 +6,20 @@ MySpot is a web-based application that enables users to discover, evaluate, and 
 
 The system is built on a relational database that organizes and manages information about locations and their associated attributes. A modern frontend interface allows users to interact with the system, while backend API routes handle communication with the database.
 
+## Google Maps setup
+
+To enable location autocomplete and reverse geocoding on the Explore page, add this to `frontend/.env.local`:
+
+```bash
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
+```
+
+In Google Cloud, enable these APIs for that key:
+
+- Maps JavaScript API
+- Places API
+- Geocoding API
+
 This project demonstrates the design and implementation of a database-driven application, including schema design, data querying, and full-stack integration.
 
 ## Database Setup

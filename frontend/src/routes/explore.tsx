@@ -6,6 +6,7 @@ import { SpotCardSkeleton } from "@/components/SpotCardSkeleton";
 import { DeleteSpotModal } from "@/components/DeleteSpotModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
+import { importGoogleMapsLibrary } from "@/lib/google-maps";
 import type { Spot } from "@/types/api";
 import {
   Compass,
@@ -16,9 +17,10 @@ import {
   Navigation,
   Plus,
   RefreshCw,
+  X,
 } from "lucide-react";
-import { useState, useEffect } from "react";
-import { getSpots, deleteSpot } from "@/server/spots";
+import { useEffect, useRef, useState } from "react";
+import { deleteSpot, searchSpots } from "@/server/spots";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "@tanstack/react-router";
@@ -27,33 +29,292 @@ export const Route = createFileRoute("/explore")({
   component: ExplorePage,
 });
 
+type SelectedLocation = {
+  lat: number;
+  lng: number;
+  label: string;
+};
+
+type LocationSuggestion = {
+  placePrediction: {
+    toPlace?: () => {
+      fetchFields: (request: { fields: string[] }) => Promise<void>;
+      displayName?: string;
+      formattedAddress?: string;
+      location?:
+        | {
+            lat?: () => number;
+            lng?: () => number;
+          }
+        | {
+            lat?: number;
+            lng?: number;
+          };
+    };
+    text?: {
+      toString?: () => string;
+    };
+  };
+  text: string;
+};
+
+function getCoordinateValue(
+  value:
+    | {
+        lat?: (() => number) | number;
+        lng?: (() => number) | number;
+      }
+    | undefined,
+  axis: "lat" | "lng",
+) {
+  const coordinate = value?.[axis];
+  if (typeof coordinate === "function") {
+    return coordinate();
+  }
+
+  return typeof coordinate === "number" ? coordinate : null;
+}
+
 function ExplorePage() {
   const { isLoggedIn, user } = useAuth();
   const [spots, setSpots] = useState<Spot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Spot | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearchInput, setDebouncedSearchInput] = useState("");
+  const [radiusMiles, setRadiusMiles] = useState("5");
+  const [selectedLocation, setSelectedLocation] =
+    useState<SelectedLocation | null>(null);
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
+  const sessionTokenRef = useRef<unknown>(null);
 
   useEffect(() => {
-    fetchSpots();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchInput(searchInput.trim());
+    }, 300);
 
-  const fetchSpots = async () => {
+    return () => window.clearTimeout(timeoutId);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const runSpotSearch = async () => {
+      try {
+        setLoading(true);
+        setError("");
+        const result = await searchSpots({
+          data: {
+            query: selectedLocation ? "" : debouncedSearchInput,
+            latitude: selectedLocation?.lat,
+            longitude: selectedLocation?.lng,
+            radiusMiles: Number(radiusMiles),
+          },
+        });
+        setSpots(result ?? []);
+      } catch (err) {
+        setError(
+          getUserFriendlyErrorMessage(
+            err,
+            "Something went wrong while loading study spots.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void runSpotSearch();
+  }, [debouncedSearchInput, selectedLocation, radiusMiles, refreshKey]);
+
+  useEffect(() => {
+    const inputValue = searchInput.trim();
+
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY || !inputValue || selectedLocation) {
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSuggestions = async () => {
+      try {
+        const placesLibrary = (await importGoogleMapsLibrary("places")) as {
+          AutocompleteSuggestion: {
+            fetchAutocompleteSuggestions: (request: {
+              input: string;
+              sessionToken?: unknown;
+              origin?: { lat: number; lng: number };
+            }) => Promise<{ suggestions?: Array<LocationSuggestion> }>;
+          };
+          AutocompleteSessionToken: new () => unknown;
+        };
+
+        if (!sessionTokenRef.current) {
+          sessionTokenRef.current =
+            new placesLibrary.AutocompleteSessionToken();
+        }
+
+        const response =
+          await placesLibrary.AutocompleteSuggestion.fetchAutocompleteSuggestions(
+            {
+              input: inputValue,
+              sessionToken: sessionTokenRef.current,
+              origin: selectedLocation
+                ? {
+                    lat: selectedLocation.lat,
+                    lng: selectedLocation.lng,
+                  }
+                : undefined,
+            },
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        const suggestions = (response.suggestions ?? [])
+          .slice(0, 5)
+          .map((suggestion) => ({
+            placePrediction: suggestion.placePrediction,
+            text:
+              suggestion.placePrediction?.text?.toString?.() ??
+              "Unknown location",
+          }))
+          .filter((suggestion) => suggestion.text.trim().length > 0);
+
+        setLocationSuggestions(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+      } catch {
+        if (!cancelled) {
+          setLocationSuggestions([]);
+          setShowSuggestions(false);
+        }
+      }
+    };
+
+    const timeoutId = window.setTimeout(loadSuggestions, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [searchInput, selectedLocation]);
+
+  const clearLocationSearch = () => {
+    setSelectedLocation(null);
+    setLocationError("");
+    setSearchInput("");
+    setLocationSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  const handleSelectSuggestion = async (suggestion: LocationSuggestion) => {
     try {
-      setLoading(true);
-      setError("");
-      const result = await getSpots();
-      setSpots(result ?? []);
+      setLocationError("");
+      setLocationLoading(true);
+      const place = suggestion.placePrediction.toPlace?.();
+
+      if (!place) {
+        throw new Error("Google Maps could not load this location.");
+      }
+
+      await place.fetchFields({
+        fields: ["displayName", "formattedAddress", "location"],
+      });
+
+      const lat = getCoordinateValue(place.location, "lat");
+      const lng = getCoordinateValue(place.location, "lng");
+
+      if (lat === null || lng === null) {
+        throw new Error("This place did not include coordinates.");
+      }
+
+      const label =
+        place.formattedAddress || place.displayName || suggestion.text;
+
+      setSelectedLocation({ lat, lng, label });
+      setSearchInput(label);
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      sessionTokenRef.current = null;
     } catch (err) {
-      setError(
+      setLocationError(
         getUserFriendlyErrorMessage(
           err,
-          "Something went wrong while loading study spots.",
+          "We couldn't turn that place into a nearby search.",
         ),
       );
     } finally {
-      setLoading(false);
+      setLocationLoading(false);
     }
+  };
+
+  const handleUseCurrentLocation = async () => {
+    if (!navigator.geolocation) {
+      setLocationError("Your browser does not support current location.");
+      return;
+    }
+
+    setLocationError("");
+    setLocationLoading(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude;
+        const lng = position.coords.longitude;
+        let label = "Current location";
+
+        try {
+          if (import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
+            const geocodingLibrary = (await importGoogleMapsLibrary(
+              "geocoding",
+            )) as {
+              Geocoder: new () => {
+                geocode: (request: {
+                  location: { lat: number; lng: number };
+                }) => Promise<{
+                  results?: Array<{ formatted_address?: string }>;
+                }>;
+              };
+            };
+            const geocoder = new geocodingLibrary.Geocoder();
+            const response = await geocoder.geocode({
+              location: { lat, lng },
+            });
+            label = response.results?.[0]?.formatted_address || label;
+          }
+        } catch {
+          label = "Current location";
+        }
+
+        setSelectedLocation({ lat, lng, label });
+        setSearchInput(label);
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+        setLocationLoading(false);
+      },
+      (geoError) => {
+        setLocationLoading(false);
+        setLocationError(
+          getUserFriendlyErrorMessage(
+            geoError,
+            "We couldn't access your current location. Check your browser permission and try again.",
+          ),
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
   };
 
   const handleDeleteSpot = async (spotId: number) => {
@@ -105,26 +366,73 @@ function ExplorePage() {
               <Input
                 placeholder="Search by name, type, or location..."
                 className="pl-10 h-11 rounded-xl"
-                // TODO: Integrate Google Maps Places autocomplete here
-                // TODO: Wire search to filter getSpots results or add server-side search
+                value={searchInput}
+                onChange={(event) => {
+                  const nextValue = event.target.value;
+                  setSearchInput(nextValue);
+                  setLocationError("");
+
+                  if (
+                    selectedLocation &&
+                    nextValue.trim() !== selectedLocation.label
+                  ) {
+                    setSelectedLocation(null);
+                  }
+                }}
+                onFocus={() => {
+                  if (locationSuggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
+                }}
+                onBlur={() => {
+                  window.setTimeout(() => setShowSuggestions(false), 150);
+                }}
               />
+              {searchInput && (
+                <button
+                  type="button"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  onClick={clearLocationSearch}
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+              {showSuggestions && (
+                <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+                  {locationSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion.text}
+                      type="button"
+                      className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm hover:bg-accent"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => handleSelectSuggestion(suggestion)}
+                    >
+                      <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span>{suggestion.text}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <Button
               variant="outline"
               className="h-11 rounded-xl gap-2 shrink-0"
-              onClick={() => {
-                // TODO: Use browser Geolocation API and pass coords to location-based spot search
-              }}
+              onClick={handleUseCurrentLocation}
+              disabled={locationLoading}
             >
               <Navigation className="h-4 w-4" />
-              <span className="hidden sm:inline">Current Location</span>
+              <span className="hidden sm:inline">
+                {locationLoading ? "Locating..." : "Current Location"}
+              </span>
             </Button>
             <div className="flex items-center gap-2 shrink-0">
               <MapPin className="h-4 w-4 text-muted-foreground" />
               <select
                 className="h-11 rounded-xl border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                defaultValue="5"
-                // TODO: Wire radius to location-based filtering
+                value={radiusMiles}
+                onChange={(event) => setRadiusMiles(event.target.value)}
+                disabled={!selectedLocation}
               >
                 <option value="1">1 mile</option>
                 <option value="3">3 miles</option>
@@ -158,6 +466,44 @@ function ExplorePage() {
               </select>
             </div>
           </div>
+          <div className="mt-3 flex flex-col gap-1 text-sm">
+            {selectedLocation ? (
+              <p className="text-muted-foreground">
+                Searching within {radiusMiles} mile
+                {radiusMiles === "1" ? "" : "s"} of{" "}
+                <span className="font-medium text-foreground">
+                  {selectedLocation.label}
+                </span>
+              </p>
+            ) : debouncedSearchInput ? (
+              <p className="text-muted-foreground">
+                Showing results for{" "}
+                <span className="font-medium text-foreground">
+                  {debouncedSearchInput}
+                </span>
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                Search by spot name, type, address, or choose a place from
+                Google Maps.
+              </p>
+            )}
+            {locationError && (
+              <p className="text-destructive">{locationError}</p>
+            )}
+            {!selectedLocation && (
+              <p className="text-muted-foreground">
+                Choose a Google place or use your current location to enable
+                radius filtering from the miles dropdown.
+              </p>
+            )}
+            {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+              <p className="text-muted-foreground">
+                Add `VITE_GOOGLE_MAPS_API_KEY` in `frontend/.env.local` to
+                enable Google location suggestions and reverse geocoding.
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Content area */}
@@ -174,7 +520,10 @@ function ExplorePage() {
                 Something went wrong
               </p>
               <p className="text-sm text-muted-foreground mb-4">{error}</p>
-              <Button onClick={fetchSpots} className="gap-2">
+              <Button
+                onClick={() => setRefreshKey((current) => current + 1)}
+                className="gap-2"
+              >
                 <RefreshCw className="h-4 w-4" />
                 Try Again
               </Button>

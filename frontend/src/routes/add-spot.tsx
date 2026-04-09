@@ -2,6 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { SectionCard } from "@/components/SectionCard";
+import { importGoogleMapsLibrary } from "@/lib/google-maps";
+import { getGoogleMapsEmbedUrl } from "@/lib/google-maps-urls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileUpload } from "@/components/FileUpload";
@@ -21,8 +23,10 @@ import {
   UtensilsCrossed,
   Building2,
   MoreHorizontal,
+  Loader2,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { createSpot } from "@/server/spots";
@@ -50,6 +54,46 @@ const SPOT_TYPES = [
   { value: "other", label: "Other", icon: MoreHorizontal },
 ] as const;
 
+type LocationSuggestion = {
+  placePrediction: {
+    toPlace?: () => {
+      fetchFields: (request: { fields: string[] }) => Promise<void>;
+      displayName?: string;
+      formattedAddress?: string;
+      location?:
+        | {
+            lat?: () => number;
+            lng?: () => number;
+          }
+        | {
+            lat?: number;
+            lng?: number;
+          };
+    };
+    text?: {
+      toString?: () => string;
+    };
+  };
+  text: string;
+};
+
+function getCoordinateValue(
+  value:
+    | {
+        lat?: (() => number) | number;
+        lng?: (() => number) | number;
+      }
+    | undefined,
+  axis: "lat" | "lng",
+) {
+  const coordinate = value?.[axis];
+  if (typeof coordinate === "function") {
+    return coordinate();
+  }
+
+  return typeof coordinate === "number" ? coordinate : null;
+}
+
 function AddSpotPage() {
   const { user, isLoggedIn } = useAuth();
 
@@ -66,7 +110,14 @@ function AddSpotPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [locationError, setLocationError] = useState("");
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationSuggestions, setLocationSuggestions] = useState<
+    LocationSuggestion[]
+  >([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const sessionTokenRef = useRef<unknown>(null);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -78,11 +129,201 @@ function AddSpotPage() {
     }));
   };
 
+  useEffect(() => {
+    const inputValue = formData.address.trim();
+
+    if (!import.meta.env.VITE_GOOGLE_MAPS_API_KEY || !inputValue) {
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadSuggestions = async () => {
+      try {
+        const placesLibrary = (await importGoogleMapsLibrary("places")) as {
+          AutocompleteSuggestion: {
+            fetchAutocompleteSuggestions: (request: {
+              input: string;
+              sessionToken?: unknown;
+            }) => Promise<{ suggestions?: Array<LocationSuggestion> }>;
+          };
+          AutocompleteSessionToken: new () => unknown;
+        };
+
+        if (!sessionTokenRef.current) {
+          sessionTokenRef.current =
+            new placesLibrary.AutocompleteSessionToken();
+        }
+
+        const response =
+          await placesLibrary.AutocompleteSuggestion.fetchAutocompleteSuggestions(
+            {
+              input: inputValue,
+              sessionToken: sessionTokenRef.current,
+            },
+          );
+
+        if (cancelled) {
+          return;
+        }
+
+        const suggestions = (response.suggestions ?? [])
+          .slice(0, 5)
+          .map((suggestion) => ({
+            placePrediction: suggestion.placePrediction,
+            text:
+              suggestion.placePrediction?.text?.toString?.() ??
+              "Unknown location",
+          }))
+          .filter((suggestion) => suggestion.text.trim().length > 0);
+
+        setLocationSuggestions(suggestions);
+        setShowSuggestions(suggestions.length > 0);
+      } catch {
+        if (!cancelled) {
+          setLocationSuggestions([]);
+          setShowSuggestions(false);
+        }
+      }
+    };
+
+    const timeoutId = window.setTimeout(loadSuggestions, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [formData.address]);
+
   const selectSpotType = (value: string) => {
     setFormData((prev) => ({
       ...prev,
       spot_type: value,
     }));
+  };
+
+  const handleSelectLocationSuggestion = async (
+    suggestion: LocationSuggestion,
+  ) => {
+    try {
+      setLocationError("");
+      setLocationLoading(true);
+      const place = suggestion.placePrediction.toPlace?.();
+
+      if (!place) {
+        throw new Error("Google Maps could not load this location.");
+      }
+
+      await place.fetchFields({
+        fields: ["displayName", "formattedAddress", "location"],
+      });
+
+      const lat = getCoordinateValue(place.location, "lat");
+      const lng = getCoordinateValue(place.location, "lng");
+
+      if (lat === null || lng === null) {
+        throw new Error("This place did not include coordinates.");
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        address: place.formattedAddress || place.displayName || suggestion.text,
+        latitude: String(lat),
+        longitude: String(lng),
+      }));
+      setLocationSuggestions([]);
+      setShowSuggestions(false);
+      sessionTokenRef.current = null;
+    } catch (err) {
+      setLocationError(
+        getUserFriendlyErrorMessage(
+          err,
+          "We couldn't resolve that address from Google Maps.",
+        ),
+      );
+    } finally {
+      setLocationLoading(false);
+    }
+  };
+
+  const handleUseCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationError("Your browser does not support current location.");
+      return;
+    }
+
+    setLocationError("");
+    setLocationLoading(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        let address = "Current location";
+
+        try {
+          if (import.meta.env.VITE_GOOGLE_MAPS_API_KEY) {
+            const geocodingLibrary = (await importGoogleMapsLibrary(
+              "geocoding",
+            )) as {
+              Geocoder: new () => {
+                geocode: (request: {
+                  location: { lat: number; lng: number };
+                }) => Promise<{
+                  results?: Array<{ formatted_address?: string }>;
+                }>;
+              };
+            };
+
+            const geocoder = new geocodingLibrary.Geocoder();
+            const response = await geocoder.geocode({
+              location: { lat: latitude, lng: longitude },
+            });
+            address = response.results?.[0]?.formatted_address || address;
+          }
+        } catch {
+          address = "Current location";
+        }
+
+        setFormData((prev) => ({
+          ...prev,
+          address,
+          latitude: String(latitude),
+          longitude: String(longitude),
+        }));
+        setLocationSuggestions([]);
+        setShowSuggestions(false);
+        setLocationLoading(false);
+      },
+      (geoError) => {
+        setLocationLoading(false);
+        setLocationError(
+          getUserFriendlyErrorMessage(
+            geoError,
+            "We couldn't access your current location. Check your browser permission and try again.",
+          ),
+        );
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      },
+    );
+  };
+
+  const clearLocation = () => {
+    setFormData((prev) => ({
+      ...prev,
+      address: "",
+      latitude: "",
+      longitude: "",
+    }));
+    setLocationError("");
+    setLocationSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -266,13 +507,57 @@ function AddSpotPage() {
                       id="address"
                       name="address"
                       value={formData.address}
-                      onChange={handleInputChange}
+                      onChange={(event) => {
+                        handleInputChange(event);
+                        setLocationError("");
+                        setFormData((prev) => ({
+                          ...prev,
+                          latitude: "",
+                          longitude: "",
+                        }));
+                      }}
+                      onFocus={() => {
+                        if (locationSuggestions.length > 0) {
+                          setShowSuggestions(true);
+                        }
+                      }}
+                      onBlur={() => {
+                        window.setTimeout(() => setShowSuggestions(false), 150);
+                      }}
                       placeholder="Search for an address..."
                       className="pl-10 h-11 rounded-xl"
                     />
+                    {locationLoading ? (
+                      <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                    ) : formData.address ? (
+                      <button
+                        type="button"
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        onClick={clearLocation}
+                        aria-label="Clear address"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
-                  {/* TODO: Integrate Google Maps Places autocomplete here */}
-                  {/* TODO: Resolve selected address into latitude/longitude automatically */}
+                  {showSuggestions && (
+                    <div className="mt-2 overflow-hidden rounded-xl border border-border bg-popover shadow-lg">
+                      {locationSuggestions.map((suggestion) => (
+                        <button
+                          key={suggestion.text}
+                          type="button"
+                          className="flex w-full items-center gap-2 px-3 py-3 text-left text-sm hover:bg-accent"
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() =>
+                            void handleSelectLocationSuggestion(suggestion)
+                          }
+                        >
+                          <MapPin className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span>{suggestion.text}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <p className="mt-1 text-xs text-muted-foreground">
                     Start typing to search, or use your current location.
                   </p>
@@ -283,29 +568,59 @@ function AddSpotPage() {
                   type="button"
                   variant="outline"
                   className="gap-2 rounded-xl"
-                  onClick={() => {
-                    // TODO: Use browser Geolocation API to get current position
-                    // TODO: Reverse geocode coords to get address and populate fields
-                  }}
+                  onClick={handleUseCurrentLocation}
+                  disabled={locationLoading}
                 >
                   <Navigation className="h-4 w-4" />
-                  Use Current Location
+                  {locationLoading ? "Locating..." : "Use Current Location"}
                 </Button>
 
                 {/* Selected location preview */}
                 {formData.address && (
                   <div className="rounded-xl border border-border bg-warm-50 p-4 flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-foreground">
                         {formData.address}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        Coordinates will be resolved automatically
-                      </p>
-                      {/* TODO: Show resolved lat/lng and mini map preview here */}
+                      {formData.latitude && formData.longitude ? (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {Number(formData.latitude).toFixed(6)},{" "}
+                          {Number(formData.longitude).toFixed(6)}
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Coordinates will be resolved automatically
+                        </p>
+                      )}
+                      {import.meta.env.VITE_GOOGLE_MAPS_API_KEY &&
+                        formData.latitude &&
+                        formData.longitude && (
+                          <div className="mt-3 h-40 overflow-hidden rounded-lg border border-border bg-background">
+                            <iframe
+                              title="Selected spot location preview"
+                              className="h-full w-full border-0"
+                              loading="lazy"
+                              referrerPolicy="no-referrer-when-downgrade"
+                              src={getGoogleMapsEmbedUrl(
+                                import.meta.env.VITE_GOOGLE_MAPS_API_KEY,
+                                Number(formData.latitude),
+                                Number(formData.longitude),
+                              )}
+                            />
+                          </div>
+                        )}
                     </div>
                   </div>
+                )}
+                {locationError && (
+                  <p className="text-sm text-destructive">{locationError}</p>
+                )}
+                {!import.meta.env.VITE_GOOGLE_MAPS_API_KEY && (
+                  <p className="text-xs text-muted-foreground">
+                    Add `VITE_GOOGLE_MAPS_API_KEY` in `frontend/.env.local` to
+                    enable Google address suggestions and map previews.
+                  </p>
                 )}
 
                 {/* Hidden lat/lng — populated by address picker or geolocation */}

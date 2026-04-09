@@ -4,6 +4,7 @@ import { StarRating } from "@/components/StarRating";
 import { ReportModal } from "@/components/ReportModal";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { getGoogleMapsEmbedUrl, getGoogleMapsSearchUrl } from "@/lib/google-maps-urls";
 import { getSpot } from "@/server/spots";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import type { Spot } from "@/types/api";
@@ -181,6 +182,9 @@ function SpotDetailsPage() {
     <MoreHorizontal className="h-5 w-5" />
   );
   const typeLabel = SPOT_TYPE_LABELS[spot.spot_type] ?? spot.spot_type;
+  const hasCoordinates = spot.latitude !== null && spot.longitude !== null;
+  const hasMapsEmbed =
+    hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
     return (
       <PageContainer className="pr-0">
@@ -297,14 +301,14 @@ function SpotDetailsPage() {
                   variant="outline"
                   className="gap-2 rounded-xl"
                   onClick={() => {
-                    // TODO: connect Google Maps deep-link with spot lat/lng
-                    if (spot.latitude && spot.longitude) {
+                    if (hasCoordinates) {
                       window.open(
-                        `https://www.google.com/maps/search/?api=1&query=${spot.latitude},${spot.longitude}`,
+                        getGoogleMapsSearchUrl(spot.latitude, spot.longitude),
                         "_blank",
                       );
                     }
                   }}
+                  disabled={!hasCoordinates}
                 >
                   <ExternalLink className="h-4 w-4" />
                   Open in Maps
@@ -349,21 +353,26 @@ function SpotDetailsPage() {
               Location
             </h2>
             <div className="rounded-xl overflow-hidden bg-warm-100 h-64 flex items-center justify-center">
-              {spot.latitude && spot.longitude ? (
+              {hasMapsEmbed ? (
                 <iframe
                   title="Spot location"
                   className="w-full h-full border-0"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
-                  src={`https://www.google.com/maps/embed/v1/place?key=GOOGLE_MAPS_API_KEY&q=${spot.latitude},${spot.longitude}&zoom=15`}
-                  // TODO: connect Google Maps embed using a real API key stored in secrets
+                  src={getGoogleMapsEmbedUrl(
+                    import.meta.env.VITE_GOOGLE_MAPS_API_KEY!,
+                    spot.latitude,
+                    spot.longitude,
+                  )}
                 />
               ) : (
                 <div className="text-center text-warm-400">
                   <MapPin className="h-10 w-10 mx-auto mb-2" />
                   <p className="text-sm font-medium">Map preview unavailable</p>
                   <p className="text-xs text-warm-300 mt-1">
-                    No coordinates available for this spot
+                    {hasCoordinates
+                      ? "Add VITE_GOOGLE_MAPS_API_KEY to enable the embedded map."
+                      : "No coordinates available for this spot"}
                   </p>
                 </div>
               )}

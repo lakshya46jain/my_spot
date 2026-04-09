@@ -11,4 +11,5 @@ export interface Spot {
   last_modified: string | null;
   creator_name: string;
   user_id: number;
+  distance_miles?: number | null;
 }
