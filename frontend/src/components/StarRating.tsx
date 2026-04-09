@@ -24,24 +24,43 @@ export function StarRating({
   onRate,
   className,
 }: StarRatingProps) {
+  function handleRate(
+    event: React.MouseEvent<HTMLButtonElement>,
+    starIndex: number,
+  ) {
+    if (!interactive) return;
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const clickOffset = event.clientX - bounds.left;
+    const isLeftHalf = clickOffset < bounds.width / 2;
+    const selectedRating = isLeftHalf ? starIndex - 0.5 : starIndex;
+
+    onRate?.(selectedRating);
+  }
+
   return (
     <div className={cn("flex items-center gap-0.5", className)}>
       {Array.from({ length: maxStars }, (_, i) => {
         const starIndex = i + 1;
         const fillPercent = Math.min(Math.max(rating - i, 0), 1) * 100;
+        const nextHalfStep = starIndex - 0.5;
 
         return (
           <button
             key={i}
             type="button"
             disabled={!interactive}
-            onClick={() => interactive && onRate?.(starIndex)}
+            onClick={(event) => handleRate(event, starIndex)}
             className={cn(
               "relative p-0 border-0 bg-transparent",
               interactive && "cursor-pointer hover:scale-110 transition-transform",
               !interactive && "cursor-default",
             )}
-            aria-label={interactive ? `Rate ${starIndex} star${starIndex > 1 ? "s" : ""}` : undefined}
+            aria-label={
+              interactive
+                ? `Rate ${nextHalfStep} or ${starIndex} stars`
+                : undefined
+            }
           >
             {/* Empty star (background) */}
             <Star className={cn(SIZES[size], "text-warm-200")} />

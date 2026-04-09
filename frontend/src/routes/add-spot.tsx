@@ -341,6 +341,16 @@ function AddSpotPage() {
         throw new Error("Spot name and type are required.");
       }
 
+      if (
+        !formData.address.trim() ||
+        !formData.latitude.trim() ||
+        !formData.longitude.trim()
+      ) {
+        throw new Error(
+          "Location is required. Choose an address suggestion or use your current location.",
+        );
+      }
+
       const result = await createSpot({
         data: {
           userId: user.userId,
@@ -498,7 +508,7 @@ function AddSpotPage() {
                     htmlFor="address"
                     className="block text-sm font-medium text-foreground mb-1.5"
                   >
-                    Address
+                    Address <span className="text-destructive">*</span>
                   </label>
                   <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -525,6 +535,7 @@ function AddSpotPage() {
                         window.setTimeout(() => setShowSuggestions(false), 150);
                       }}
                       placeholder="Search for an address..."
+                      required
                       className="pl-10 h-11 rounded-xl"
                     />
                     {locationLoading ? (
@@ -559,7 +570,7 @@ function AddSpotPage() {
                     </div>
                   )}
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Start typing to search, or use your current location.
+                    Start typing and choose a suggestion, or use your current location.
                   </p>
                 </div>
 

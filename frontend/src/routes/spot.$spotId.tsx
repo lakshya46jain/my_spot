@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGoogleMapsEmbedUrl, getGoogleMapsSearchUrl } from "@/lib/google-maps-urls";
 import { getSpot } from "@/server/spots";
+import { createReview, getSpotReviews } from "@/server/reviews";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
-import type { Spot } from "@/types/api";
+import type { Spot, SpotReview } from "@/types/api";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -63,31 +64,6 @@ const DAYS_OF_WEEK = [
 // TODO: fetch real attributes from backend (spot_attributes table)
 const PLACEHOLDER_ATTRIBUTES = ["WiFi", "Quiet", "Power Outlets"];
 
-// Placeholder reviews — TODO: fetch reviews for this spot from reviews table
-const PLACEHOLDER_REVIEWS = [
-  {
-    id: 1,
-    name: "Alex M.",
-    rating: 4,
-    text: "Great atmosphere and solid WiFi. Gets a little busy in the afternoons but otherwise perfect for studying.",
-    date: "2 days ago",
-  },
-  {
-    id: 2,
-    name: "Jordan P.",
-    rating: 5,
-    text: "My absolute favorite study spot! Friendly staff, great coffee, and plenty of outlets.",
-    date: "1 week ago",
-  },
-  {
-    id: 3,
-    name: "Sam K.",
-    rating: 3,
-    text: "Decent spot but the seating can be uncomfortable for long sessions. Coffee is good though.",
-    date: "2 weeks ago",
-  },
-];
-
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -97,15 +73,29 @@ function getInitials(name: string) {
     .slice(0, 2);
 }
 
+function formatReviewDate(value: string) {
+  return new Date(value).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 // ─── Main Component ──────────────────────────────────────────────
 function SpotDetailsPage() {
   const { spotId: spotIdStr } = Route.useParams();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const spotId = Number(spotIdStr);
 
   const [spot, setSpot] = useState<Spot | null>(null);
+  const [reviews, setReviews] = useState<SpotReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [reviewsLoading, setReviewsLoading] = useState(true);
+  const [reviewsError, setReviewsError] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [submitSuccess, setSubmitSuccess] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   // Carousel state
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -124,8 +114,10 @@ function SpotDetailsPage() {
       try {
         setLoading(true);
         setError("");
-        const result = await getSpot({ data: { spotId } });
-        setSpot(result);
+        setReviewsLoading(true);
+        setReviewsError("");
+        const spotResult = await getSpot({ data: { spotId } });
+        setSpot(spotResult);
       } catch (err) {
         setError(
           getUserFriendlyErrorMessage(err, "Could not load spot details."),
@@ -133,19 +125,59 @@ function SpotDetailsPage() {
       } finally {
         setLoading(false);
       }
+
+      try {
+        const reviewResults = await getSpotReviews({ data: { spotId } });
+        setReviews(reviewResults);
+      } catch (err) {
+        setReviewsError(
+          getUserFriendlyErrorMessage(err, "Could not load reviews."),
+        );
+      } finally {
+        setReviewsLoading(false);
+      }
     }
-    if (spotId) load();
+
+    if (spotId) {
+      load();
+    }
   }, [spotId]);
 
-  // TODO: fetch real aggregated rating value from reviews table
-  const aggregatedRating = 4.0;
+  const reviewCount = reviews.length;
+  const aggregatedRating =
+    reviewCount === 0
+      ? 0
+      : reviews.reduce((sum, review) => sum + Number(review.rating), 0) /
+        reviewCount;
 
-  const handleSubmitReview = () => {
-    if (reviewRating === 0) return;
-    // TODO: wire review submission to backend
-    console.log("Submit review:", { spotId, rating: reviewRating, text: reviewText });
-    setReviewRating(0);
-    setReviewText("");
+  const handleSubmitReview = async () => {
+    if (!user || reviewRating === 0) return;
+
+    try {
+      setSubmittingReview(true);
+      setSubmitError("");
+      setSubmitSuccess("");
+
+      const result = await createReview({
+        data: {
+          spotId,
+          userId: user.userId,
+          rating: reviewRating,
+          review: reviewText,
+        },
+      });
+
+      setReviews((prev) => [result.review, ...prev]);
+      setReviewRating(0);
+      setReviewText("");
+      setSubmitSuccess(result.message);
+    } catch (err) {
+      setSubmitError(
+        getUserFriendlyErrorMessage(err, "Could not submit your review."),
+      );
+    } finally {
+      setSubmittingReview(false);
+    }
   };
 
   if (loading) {
@@ -186,29 +218,29 @@ function SpotDetailsPage() {
   const hasMapsEmbed =
     hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
 
-    return (
-      <PageContainer className="pr-0">
-        {/* Back link */}
-        <div className="mb-6">
-          <Button asChild className="gap-2 rounded-xl shadow-sm">
-            <Link to="/explore">
-              <ArrowLeft className="h-4 w-4" />
-              Back to Explore
-            </Link>
-          </Button>
-        </div>
+  return (
+    <PageContainer className="pr-0">
+      {/* Back link */}
+      <div className="mb-6">
+        <Button asChild className="gap-2 rounded-xl shadow-sm">
+          <Link to="/explore">
+            <ArrowLeft className="h-4 w-4" />
+            Back to Explore
+          </Link>
+        </Button>
+      </div>
 
-        <div className="max-w-4xl mx-auto space-y-8">
-          {/* ─── Media Carousel ─── */}
-          <div className="relative rounded-2xl overflow-hidden bg-warm-100 h-72 md:h-96 flex items-center justify-center">
-            <div className="flex flex-col items-center gap-2 text-warm-400">
-              <ImageOff className="h-14 w-14" />
-              <span className="text-sm font-medium">
-                Photo {currentSlide + 1} of {placeholderSlides}
-              </span>
-              <span className="text-xs text-warm-300">Media coming soon</span>
-            </div>
-            {/* TODO: connect spot media carousel to spot_media API */}
+      <div className="max-w-4xl mx-auto space-y-8">
+        {/* ─── Media Carousel ─── */}
+        <div className="relative rounded-2xl overflow-hidden bg-warm-100 h-72 md:h-96 flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 text-warm-400">
+            <ImageOff className="h-14 w-14" />
+            <span className="text-sm font-medium">
+              Photo {currentSlide + 1} of {placeholderSlides}
+            </span>
+            <span className="text-xs text-warm-300">Media coming soon</span>
+          </div>
+          {/* TODO: connect spot media carousel to spot_media API */}
 
             {/* Navigation arrows */}
             <button
@@ -275,12 +307,20 @@ function SpotDetailsPage() {
                 {/* Rating */}
                 <div className="flex items-center gap-2 mb-4">
                   <StarRating rating={aggregatedRating} size="md" />
-                  <span className="text-sm font-medium text-foreground">
-                    {aggregatedRating.toFixed(1)}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    ({PLACEHOLDER_REVIEWS.length} reviews)
-                  </span>
+                  {reviewCount > 0 ? (
+                    <>
+                      <span className="text-sm font-medium text-foreground">
+                        {aggregatedRating.toFixed(1)}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({reviewCount} review{reviewCount === 1 ? "" : "s"})
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">
+                      No reviews yet
+                    </span>
+                  )}
                 </div>
                 {/* Attributes */}
                 <div className="flex flex-wrap gap-2">
@@ -463,12 +503,22 @@ function SpotDetailsPage() {
                 </div>
                 <Button
                   onClick={handleSubmitReview}
-                  disabled={reviewRating === 0}
+                  disabled={reviewRating === 0 || submittingReview}
                   className="gap-2"
                 >
-                  <Send className="h-4 w-4" />
-                  Submit Review
+                  {submittingReview ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
+                  {submittingReview ? "Submitting..." : "Submit Review"}
                 </Button>
+                {submitSuccess ? (
+                  <p className="text-sm text-emerald-600">{submitSuccess}</p>
+                ) : null}
+                {submitError ? (
+                  <p className="text-sm text-destructive">{submitError}</p>
+                ) : null}
               </div>
             </div>
           )}
@@ -476,61 +526,87 @@ function SpotDetailsPage() {
           {/* ─── Reviews List ─── */}
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 className="text-lg font-display text-foreground mb-4">
-              Reviews ({PLACEHOLDER_REVIEWS.length})
+              Reviews ({reviewCount})
             </h2>
-            {/* TODO: fetch reviews for this spot from reviews table */}
-            <div className="space-y-4">
-              {PLACEHOLDER_REVIEWS.map((review) => (
-                <div
-                  key={review.id}
-                  className="rounded-xl border border-border p-4"
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-center gap-3">
-                      {/* TODO: replace with real reviewer profile image */}
-                      <div className="h-9 w-9 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700 shrink-0">
-                        {getInitials(review.name)}
+            {reviewsError ? (
+              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                {reviewsError}
+              </div>
+            ) : reviewsLoading ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Loading reviews...
+              </div>
+            ) : reviewCount === 0 ? (
+              <div className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
+                No reviews have been shared for this spot yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {reviews.map((review) => {
+                  const isOwnReview = user?.userId === review.user_id;
+
+                  return (
+                    <div
+                      key={review.review_id}
+                      className="rounded-xl border border-border p-4"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          {/* TODO: replace with real reviewer profile image */}
+                          <div className="h-9 w-9 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700 shrink-0">
+                            {getInitials(review.reviewer_name)}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {review.reviewer_name}
+                            </p>
+                            <p className="text-[11px] text-muted-foreground">
+                              {formatReviewDate(review.created_at)}
+                            </p>
+                          </div>
+                        </div>
+                        <StarRating rating={review.rating} size="sm" />
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">
-                          {review.name}
+                      {review.review ? (
+                        <p className="text-sm text-muted-foreground leading-relaxed mb-3">
+                          {review.review}
                         </p>
-                        <p className="text-[11px] text-muted-foreground">
-                          {review.date}
+                      ) : (
+                        <p className="text-sm italic text-muted-foreground mb-3">
+                          Rated without a written review.
                         </p>
+                      )}
+                      <div className="flex items-center gap-2">
+                        {isOwnReview ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                            onClick={() => {
+                              // TODO: wire edit review flow
+                              console.log("Edit review:", review.review_id);
+                            }}
+                          >
+                            <Pencil className="h-3 w-3 mr-1" />
+                            Edit
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => setReportReviewTarget(review.review_id)}
+                        >
+                          <Flag className="h-3 w-3 mr-1" />
+                          Report
+                        </Button>
                       </div>
                     </div>
-                    <StarRating rating={review.rating} size="sm" />
-                  </div>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                    {review.text}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => {
-                        // TODO: wire edit review flow
-                        console.log("Edit review:", review.id);
-                      }}
-                    >
-                      <Pencil className="h-3 w-3 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                      onClick={() => setReportReviewTarget(review.id)}
-                    >
-                      <Flag className="h-3 w-3 mr-1" />
-                      Report
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
 
@@ -549,6 +625,5 @@ function SpotDetailsPage() {
           type="review"
         />
       </PageContainer>
-    
   );
 }

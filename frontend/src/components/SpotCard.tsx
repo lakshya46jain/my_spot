@@ -55,9 +55,8 @@ export function SpotCard({
     <MoreHorizontal className="h-3.5 w-3.5" />
   );
   const typeLabel = SPOT_TYPE_LABELS[spot.spot_type] ?? spot.spot_type;
-
-  // TODO: fetch real aggregated rating value from reviews table
-  const placeholderRating = 0;
+  const averageRating = spot.average_rating;
+  const reviewCount = spot.review_count;
 
   return (
     <div className="group rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col">
@@ -110,10 +109,10 @@ export function SpotCard({
 
         {/* Rating */}
         <div className="flex items-center gap-1.5 mb-3">
-          <StarRating rating={placeholderRating} size="sm" />
+          <StarRating rating={averageRating ?? 0} size="sm" />
           <span className="text-xs text-muted-foreground">
-            {placeholderRating > 0
-              ? placeholderRating.toFixed(1)
+            {averageRating !== null
+              ? `${averageRating.toFixed(1)} (${reviewCount})`
               : "No ratings yet"}
           </span>
         </div>
@@ -144,8 +143,7 @@ export function SpotCard({
               Edit
             </Button>
           )}
-          {/* TODO: Restrict delete visibility to owner/admin when full role logic is wired */}
-          {(isOwner || isLoggedIn) && (
+          {isOwner && (
             <Button
               variant="ghost"
               size="sm"

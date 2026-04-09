@@ -92,6 +92,11 @@ function ExplorePage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedSpotType, setSelectedSpotType] = useState("all");
+  const [minimumRating, setMinimumRating] = useState("any");
+  const [reviewedOnly, setReviewedOnly] = useState(false);
+  const [sortBy, setSortBy] = useState("newest");
   const [refreshKey, setRefreshKey] = useState(0);
   const sessionTokenRef = useRef<unknown>(null);
 
@@ -342,6 +347,64 @@ function ExplorePage() {
     navigate({ to: "/spot/$spotId", params: { spotId: String(spotId) } });
   };
 
+  const availableSpotTypes = Array.from(
+    new Set(spots.map((spot) => spot.spot_type).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
+
+  const visibleSpots = spots
+    .filter((spot) => {
+      if (selectedSpotType !== "all" && spot.spot_type !== selectedSpotType) {
+        return false;
+      }
+
+      if (minimumRating !== "any") {
+        const threshold = Number(minimumRating);
+
+        if (
+          spot.average_rating === null ||
+          Number(spot.average_rating) < threshold
+        ) {
+          return false;
+        }
+      }
+
+      if (reviewedOnly && spot.review_count === 0) {
+        return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      switch (sortBy) {
+        case "oldest":
+          return (
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        case "name":
+          return a.spot_name.localeCompare(b.spot_name);
+        case "rating":
+          return (
+            (b.average_rating ?? -1) - (a.average_rating ?? -1) ||
+            b.review_count - a.review_count ||
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+        case "distance":
+          return (
+            (a.distance_miles ?? Number.POSITIVE_INFINITY) -
+              (b.distance_miles ?? Number.POSITIVE_INFINITY) ||
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+        case "newest":
+        default:
+          return (
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+      }
+    });
+
+  const hasActiveFilters =
+    selectedSpotType !== "all" || minimumRating !== "any" || reviewedOnly;
+
   return (
     <>
       <FloatingRightNav />
@@ -444,19 +507,18 @@ function ExplorePage() {
             <Button
               variant="outline"
               className="h-11 rounded-xl gap-2 shrink-0"
-              onClick={() => {
-                // TODO: Open filter panel (spot type, attributes, rating, open now, etc.)
-              }}
+              onClick={() => setShowFilters((current) => !current)}
             >
               <SlidersHorizontal className="h-4 w-4" />
               Filters
+              {hasActiveFilters ? " (On)" : ""}
             </Button>
             <div className="flex items-center gap-2 shrink-0">
               <ArrowUpDown className="h-4 w-4 text-muted-foreground" />
               <select
                 className="h-11 rounded-xl border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                defaultValue="newest"
-                // TODO: Wire sort to re-order spots (backend or client-side)
+                value={sortBy}
+                onChange={(event) => setSortBy(event.target.value)}
               >
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
@@ -466,6 +528,75 @@ function ExplorePage() {
               </select>
             </div>
           </div>
+          {showFilters && (
+            <div className="mt-4 rounded-2xl border border-border bg-warm-50/40 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Spot Type
+                  </label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={selectedSpotType}
+                    onChange={(event) => setSelectedSpotType(event.target.value)}
+                  >
+                    <option value="all">All types</option>
+                    {availableSpotTypes.map((spotType) => (
+                      <option key={spotType} value={spotType}>
+                        {spotType}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium text-foreground">
+                    Minimum Rating
+                  </label>
+                  <select
+                    className="h-11 w-full rounded-xl border border-input bg-transparent px-3 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                    value={minimumRating}
+                    onChange={(event) => setMinimumRating(event.target.value)}
+                  >
+                    <option value="any">Any rating</option>
+                    <option value="4.5">4.5+</option>
+                    <option value="4">4.0+</option>
+                    <option value="3.5">3.5+</option>
+                    <option value="3">3.0+</option>
+                  </select>
+                </div>
+
+                <label className="flex items-center gap-3 rounded-xl border border-input bg-background px-3 py-3 text-sm text-foreground md:self-end">
+                  <input
+                    type="checkbox"
+                    checked={reviewedOnly}
+                    onChange={(event) => setReviewedOnly(event.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  Only show spots with reviews
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSelectedSpotType("all");
+                    setMinimumRating("any");
+                    setReviewedOnly(false);
+                  }}
+                  disabled={!hasActiveFilters}
+                >
+                  Clear Filters
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Filter results by type, rating, and whether the spot has any reviews.
+                </p>
+              </div>
+            </div>
+          )}
           <div className="mt-3 flex flex-col gap-1 text-sm">
             {selectedLocation ? (
               <p className="text-muted-foreground">
@@ -529,35 +660,49 @@ function ExplorePage() {
               </Button>
             </div>
           </div>
-        ) : spots.length === 0 ? (
+        ) : visibleSpots.length === 0 ? (
           <div className="text-center py-16">
             <div className="rounded-2xl border border-border bg-card p-10 max-w-md mx-auto shadow-sm">
               <MapPin className="h-12 w-12 text-warm-300 mx-auto mb-4" />
               <h3 className="text-xl font-display text-foreground mb-2">
-                No study spots yet
+                No matching study spots
               </h3>
               <p className="text-sm text-muted-foreground mb-6">
-                Be the first to share a great place to study with the community!
+                Try adjusting your search, location, or filters to see more results.
               </p>
-              <Button asChild className="gap-2">
-                <Link to="/add-spot">
-                  <Plus className="h-4 w-4" />
-                  Add a Spot
-                </Link>
-              </Button>
+              {hasActiveFilters ? (
+                <Button
+                  onClick={() => {
+                    setSelectedSpotType("all");
+                    setMinimumRating("any");
+                    setReviewedOnly(false);
+                  }}
+                  className="gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Clear Filters
+                </Button>
+              ) : (
+                <Button asChild className="gap-2">
+                  <Link to="/add-spot">
+                    <Plus className="h-4 w-4" />
+                    Add a Spot
+                  </Link>
+                </Button>
+              )}
             </div>
           </div>
         ) : (
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {spots.map((spot) => (
+              {visibleSpots.map((spot) => (
                 <SpotCard
                   key={spot.spot_id}
                   spot={spot}
                   isLoggedIn={isLoggedIn}
                   isOwner={user?.userId === spot.user_id}
                   onDelete={(spotId) => {
-                    const target = spots.find((s) => s.spot_id === spotId);
+                    const target = visibleSpots.find((s) => s.spot_id === spotId);
                     if (target) setDeleteTarget(target);
                   }}
                   onEdit={(spotId) => {
@@ -573,9 +718,9 @@ function ExplorePage() {
               <p className="text-sm text-muted-foreground">
                 Showing{" "}
                 <span className="font-semibold text-foreground">
-                  {spots.length}
+                  {visibleSpots.length}
                 </span>{" "}
-                study spot{spots.length !== 1 ? "s" : ""}
+                study spot{visibleSpots.length !== 1 ? "s" : ""}
               </p>
             </div>
           </>

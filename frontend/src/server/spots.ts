@@ -10,9 +10,9 @@ const createSpotSchema = z.object({
   spot_name: z.string().trim().min(1, "Spot name is required."),
   spot_type: z.string().trim().min(1, "Spot type is required."),
   short_description: z.string().trim().optional().or(z.literal("")),
-  address: z.string().trim().optional().or(z.literal("")),
-  latitude: z.string().trim().optional().or(z.literal("")),
-  longitude: z.string().trim().optional().or(z.literal("")),
+  address: z.string().trim().min(1, "Location is required."),
+  latitude: z.string().trim().min(1, "Location coordinates are required."),
+  longitude: z.string().trim().min(1, "Location coordinates are required."),
   status: spotStatusSchema.default("active"),
 });
 
@@ -65,6 +65,8 @@ type SpotRow = RowDataPacket & {
   last_modified: string | null;
   creator_name: string;
   user_id: number;
+  average_rating: number | string | null;
+  review_count: number;
   distance_miles?: number | null;
 };
 
@@ -79,6 +81,29 @@ function parseNullableDecimal(value?: string) {
     throw new Error("Latitude/longitude must be valid numbers.");
   }
   return parsed;
+}
+
+function parseRequiredDecimal(value: string, fieldLabel: string) {
+  const parsed = parseNullableDecimal(value);
+
+  if (parsed === null) {
+    throw new Error(`${fieldLabel} is required.`);
+  }
+
+  return parsed;
+}
+
+function normalizeSpot(row: SpotRow) {
+  return {
+    ...row,
+    average_rating:
+      row.average_rating === null ? null : Number(row.average_rating),
+    review_count: Number(row.review_count ?? 0),
+    distance_miles:
+      row.distance_miles === undefined || row.distance_miles === null
+        ? row.distance_miles
+        : Number(row.distance_miles),
+  };
 }
 
 export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
@@ -96,14 +121,31 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
       s.created_at,
       s.last_modified,
       s.user_id,
-      u.display_name AS creator_name
+      u.display_name AS creator_name,
+      AVG(r.rating) AS average_rating,
+      COUNT(r.review_id) AS review_count
     FROM spots s
     JOIN users u ON s.user_id = u.user_id
+    WHERE s.status = 'active'
+    LEFT JOIN reviews r ON s.spot_id = r.spot_id
+    GROUP BY
+      s.spot_id,
+      s.spot_name,
+      s.spot_type,
+      s.short_description,
+      s.address,
+      s.latitude,
+      s.longitude,
+      s.status,
+      s.created_at,
+      s.last_modified,
+      s.user_id,
+      u.display_name
     ORDER BY s.created_at DESC
     `,
   );
 
-  return rows;
+  return rows.map(normalizeSpot);
 });
 
 export const searchSpots = createServerFn({ method: "POST" })
@@ -145,10 +187,14 @@ export const searchSpots = createServerFn({ method: "POST" })
         s.last_modified,
         s.user_id,
         u.display_name AS creator_name,
+        AVG(r.rating) AS average_rating,
+        COUNT(r.review_id) AS review_count,
         ${distanceSql} AS distance_miles
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
+      LEFT JOIN reviews r ON s.spot_id = r.spot_id
       WHERE 1 = 1
+        AND s.status = 'active'
     `;
 
     if (hasQuery) {
@@ -170,6 +216,19 @@ export const searchSpots = createServerFn({ method: "POST" })
         AND s.longitude IS NOT NULL
       `;
       sql += `
+        GROUP BY
+          s.spot_id,
+          s.spot_name,
+          s.spot_type,
+          s.short_description,
+          s.address,
+          s.latitude,
+          s.longitude,
+          s.status,
+          s.created_at,
+          s.last_modified,
+          s.user_id,
+          u.display_name
         HAVING distance_miles <= ?
       `;
       params.push(data.radiusMiles);
@@ -178,12 +237,25 @@ export const searchSpots = createServerFn({ method: "POST" })
       `;
     } else {
       sql += `
+        GROUP BY
+          s.spot_id,
+          s.spot_name,
+          s.spot_type,
+          s.short_description,
+          s.address,
+          s.latitude,
+          s.longitude,
+          s.status,
+          s.created_at,
+          s.last_modified,
+          s.user_id,
+          u.display_name
         ORDER BY s.created_at DESC
       `;
     }
 
     const [rows] = await db.execute<SpotRow[]>(sql, params);
-    return rows;
+    return rows.map(normalizeSpot);
   });
 
 export const getSpot = createServerFn({ method: "GET" })
@@ -203,10 +275,26 @@ export const getSpot = createServerFn({ method: "GET" })
         s.created_at,
         s.last_modified,
         s.user_id,
-        u.display_name AS creator_name
+        u.display_name AS creator_name,
+        AVG(r.rating) AS average_rating,
+        COUNT(r.review_id) AS review_count
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
+      LEFT JOIN reviews r ON s.spot_id = r.spot_id
       WHERE s.spot_id = ?
+      GROUP BY
+        s.spot_id,
+        s.spot_name,
+        s.spot_type,
+        s.short_description,
+        s.address,
+        s.latitude,
+        s.longitude,
+        s.status,
+        s.created_at,
+        s.last_modified,
+        s.user_id,
+        u.display_name
       LIMIT 1
       `,
       [data.spotId],
@@ -216,14 +304,14 @@ export const getSpot = createServerFn({ method: "GET" })
       throw new Error("Spot not found.");
     }
 
-    return rows[0];
+    return normalizeSpot(rows[0]);
   });
 
 export const createSpot = createServerFn({ method: "POST" })
   .inputValidator((input: CreateSpotInput) => createSpotSchema.parse(input))
   .handler(async ({ data }) => {
-    const latitude = parseNullableDecimal(data.latitude);
-    const longitude = parseNullableDecimal(data.longitude);
+    const latitude = parseRequiredDecimal(data.latitude, "Latitude");
+    const longitude = parseRequiredDecimal(data.longitude, "Longitude");
 
     const [result] = await db.execute<ResultSetHeader>(
       `
@@ -243,7 +331,7 @@ export const createSpot = createServerFn({ method: "POST" })
         data.spot_name.trim(),
         data.spot_type.trim(),
         data.short_description?.trim() || null,
-        data.address?.trim() || null,
+        data.address.trim(),
         latitude,
         longitude,
         data.userId,

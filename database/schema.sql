@@ -59,7 +59,7 @@ CREATE TABLE reviews (
     review_id INT NOT NULL AUTO_INCREMENT,
     spot_id INT NOT NULL,
     user_id INT NOT NULL,
-    rating INT NOT NULL,
+    rating DECIMAL(2,1) NOT NULL,
     review TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (review_id),
@@ -70,7 +70,7 @@ CREATE TABLE reviews (
     CONSTRAINT fk_reviews_user
         FOREIGN KEY (user_id) REFERENCES users (user_id),
     CONSTRAINT chk_reviews_rating
-        CHECK (rating BETWEEN 1 AND 5)
+        CHECK (rating BETWEEN 0.5 AND 5.0 AND rating * 2 = FLOOR(rating * 2))
 );
 
 CREATE TABLE favorites (

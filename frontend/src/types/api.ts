@@ -11,5 +11,17 @@ export interface Spot {
   last_modified: string | null;
   creator_name: string;
   user_id: number;
+  average_rating: number | null;
+  review_count: number;
   distance_miles?: number | null;
+}
+
+export interface SpotReview {
+  review_id: number;
+  spot_id: number;
+  user_id: number;
+  rating: number;
+  review: string | null;
+  created_at: string;
+  reviewer_name: string;
 }
