@@ -2,11 +2,25 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
 import { StarRating } from "@/components/StarRating";
 import { ReportModal } from "@/components/ReportModal";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGoogleMapsEmbedUrl, getGoogleMapsSearchUrl } from "@/lib/google-maps-urls";
 import { getSpot } from "@/server/spots";
-import { createReview, getSpotReviews } from "@/server/reviews";
+import {
+  createReview,
+  deleteReview,
+  getSpotReviews,
+  updateReview,
+} from "@/server/reviews";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import type { Spot, SpotReview } from "@/types/api";
 import {
@@ -16,6 +30,7 @@ import {
   MapPin,
   ExternalLink,
   Pencil,
+  Trash2,
   Flag,
   Clock,
   Coffee,
@@ -96,6 +111,15 @@ function SpotDetailsPage() {
   const [submitError, setSubmitError] = useState("");
   const [submitSuccess, setSubmitSuccess] = useState("");
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [editReviewTarget, setEditReviewTarget] = useState<SpotReview | null>(null);
+  const [editReviewRating, setEditReviewRating] = useState(0);
+  const [editReviewText, setEditReviewText] = useState("");
+  const [editReviewError, setEditReviewError] = useState("");
+  const [editingReview, setEditingReview] = useState(false);
+  const [deleteReviewTarget, setDeleteReviewTarget] = useState<SpotReview | null>(
+    null,
+  );
+  const [deletingReview, setDeletingReview] = useState(false);
 
   // Carousel state
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -177,6 +201,73 @@ function SpotDetailsPage() {
       );
     } finally {
       setSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async () => {
+    if (!user || !deleteReviewTarget) return;
+
+    try {
+      setDeletingReview(true);
+      setReviewsError("");
+
+      await deleteReview({
+        data: {
+          reviewId: deleteReviewTarget.review_id,
+          userId: user.userId,
+        },
+      });
+
+      setReviews((prev) =>
+        prev.filter((review) => review.review_id !== deleteReviewTarget.review_id),
+      );
+      setDeleteReviewTarget(null);
+    } catch (err) {
+      setReviewsError(
+        getUserFriendlyErrorMessage(err, "Could not delete your review."),
+      );
+    } finally {
+      setDeletingReview(false);
+    }
+  };
+
+  const handleOpenEditReview = (review: SpotReview) => {
+    setEditReviewTarget(review);
+    setEditReviewRating(review.rating);
+    setEditReviewText(review.review ?? "");
+    setEditReviewError("");
+  };
+
+  const handleSaveEditedReview = async () => {
+    if (!user || !editReviewTarget || editReviewRating === 0) return;
+
+    try {
+      setEditingReview(true);
+      setEditReviewError("");
+
+      const result = await updateReview({
+        data: {
+          reviewId: editReviewTarget.review_id,
+          userId: user.userId,
+          rating: editReviewRating,
+          review: editReviewText,
+        },
+      });
+
+      setReviews((prev) =>
+        prev.map((review) =>
+          review.review_id === result.review.review_id ? result.review : review,
+        ),
+      );
+      setEditReviewTarget(null);
+      setEditReviewRating(0);
+      setEditReviewText("");
+    } catch (err) {
+      setEditReviewError(
+        getUserFriendlyErrorMessage(err, "Could not update your review."),
+      );
+    } finally {
+      setEditingReview(false);
     }
   };
 
@@ -583,24 +674,34 @@ function SpotDetailsPage() {
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs text-muted-foreground hover:text-foreground"
-                            onClick={() => {
-                              // TODO: wire edit review flow
-                              console.log("Edit review:", review.review_id);
-                            }}
+                            onClick={() => handleOpenEditReview(review)}
                           >
                             <Pencil className="h-3 w-3 mr-1" />
                             Edit
                           </Button>
                         ) : null}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                          onClick={() => setReportReviewTarget(review.review_id)}
-                        >
-                          <Flag className="h-3 w-3 mr-1" />
-                          Report
-                        </Button>
+                        {isOwnReview ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-destructive hover:text-destructive"
+                            onClick={() => setDeleteReviewTarget(review)}
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Delete
+                          </Button>
+                        ) : null}
+                        {!isOwnReview ? (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                            onClick={() => setReportReviewTarget(review.review_id)}
+                          >
+                            <Flag className="h-3 w-3 mr-1" />
+                            Report
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   );
@@ -624,6 +725,98 @@ function SpotDetailsPage() {
           }}
           type="review"
         />
+        <ConfirmationModal
+          open={deleteReviewTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !deletingReview) {
+              setDeleteReviewTarget(null);
+            }
+          }}
+          title="Delete Review"
+          description="This will permanently remove your review from this spot."
+          confirmLabel={deletingReview ? "Deleting..." : "Delete Review"}
+          onConfirm={() => {
+            void handleDeleteReview();
+          }}
+          destructive
+        />
+        <Dialog
+          open={editReviewTarget !== null}
+          onOpenChange={(open) => {
+            if (!open && !editingReview) {
+              setEditReviewTarget(null);
+              setEditReviewRating(0);
+              setEditReviewText("");
+              setEditReviewError("");
+            }
+          }}
+        >
+          <DialogContent className="rounded-2xl sm:max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Edit Review</DialogTitle>
+              <DialogDescription>
+                Update your rating or written review for this spot.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-2">
+                  Your Rating
+                </label>
+                <StarRating
+                  rating={editReviewRating}
+                  size="lg"
+                  interactive
+                  onRate={setEditReviewRating}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1.5">
+                  Your Review
+                </label>
+                <textarea
+                  value={editReviewText}
+                  onChange={(event) => setEditReviewText(event.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  placeholder="Share your updated experience at this study spot..."
+                />
+              </div>
+              {editReviewError ? (
+                <p className="text-sm text-destructive">{editReviewError}</p>
+              ) : null}
+            </div>
+            <DialogFooter className="gap-2 sm:gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (!editingReview) {
+                    setEditReviewTarget(null);
+                    setEditReviewRating(0);
+                    setEditReviewText("");
+                    setEditReviewError("");
+                  }
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  void handleSaveEditedReview();
+                }}
+                disabled={editReviewRating === 0 || editingReview}
+                className="gap-2"
+              >
+                {editingReview ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4" />
+                )}
+                {editingReview ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageContainer>
   );
 }

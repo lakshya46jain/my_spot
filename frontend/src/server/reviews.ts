@@ -14,11 +14,30 @@ const createReviewSchema = z.object({
   review: z.string().trim().max(4000).optional().or(z.literal("")),
 });
 
+const updateReviewSchema = z.object({
+  reviewId: z.number().int().positive(),
+  userId: z.number().int().positive(),
+  rating: z.number().min(0.5).max(5).multipleOf(0.5),
+  review: z.string().trim().max(4000).optional().or(z.literal("")),
+});
+
+const deleteReviewSchema = z.object({
+  reviewId: z.number().int().positive(),
+  userId: z.number().int().positive(),
+});
+
 type GetSpotReviewsInput = z.infer<typeof getSpotReviewsSchema>;
 type CreateReviewInput = z.infer<typeof createReviewSchema>;
+type UpdateReviewInput = z.infer<typeof updateReviewSchema>;
+type DeleteReviewInput = z.infer<typeof deleteReviewSchema>;
 
 type ExistingRow = RowDataPacket & {
   id: number;
+};
+
+type ReviewOwnershipRow = RowDataPacket & {
+  review_id: number;
+  user_id: number;
 };
 
 type ReviewRow = RowDataPacket & {
@@ -137,4 +156,114 @@ export const createReview = createServerFn({ method: "POST" })
       review: normalizeReview(rows[0]),
       message: "Review submitted successfully.",
     };
+  });
+
+export const updateReview = createServerFn({ method: "POST" })
+  .inputValidator((input: UpdateReviewInput) => updateReviewSchema.parse(input))
+  .handler(async ({ data }) => {
+    const trimmedReview = data.review?.trim() || null;
+
+    const [reviewRows] = await db.execute<ReviewOwnershipRow[]>(
+      `
+      SELECT review_id, user_id
+      FROM reviews
+      WHERE review_id = ?
+      LIMIT 1
+      `,
+      [data.reviewId],
+    );
+
+    if (reviewRows.length === 0) {
+      throw new Error("Review not found.");
+    }
+
+    if (reviewRows[0].user_id !== data.userId) {
+      throw new Error("You can only edit your own reviews.");
+    }
+
+    await db.execute<ResultSetHeader>(
+      `
+      UPDATE reviews
+      SET rating = ?, review = ?
+      WHERE review_id = ?
+      `,
+      [data.rating, trimmedReview, data.reviewId],
+    );
+
+    const [rows] = await db.execute<ReviewRow[]>(
+      `
+      SELECT
+        r.review_id,
+        r.spot_id,
+        r.user_id,
+        r.rating,
+        r.review,
+        r.created_at,
+        u.display_name AS reviewer_name
+      FROM reviews r
+      INNER JOIN users u ON r.user_id = u.user_id
+      WHERE r.review_id = ?
+      LIMIT 1
+      `,
+      [data.reviewId],
+    );
+
+    if (rows.length === 0) {
+      throw new Error("Review updated, but it could not be reloaded.");
+    }
+
+    return {
+      success: true,
+      review: normalizeReview(rows[0]),
+      message: "Review updated successfully.",
+    };
+  });
+
+export const deleteReview = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteReviewInput) => deleteReviewSchema.parse(input))
+  .handler(async ({ data }) => {
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [reviewRows] = await connection.execute<ReviewOwnershipRow[]>(
+        `
+        SELECT review_id, user_id
+        FROM reviews
+        WHERE review_id = ?
+        LIMIT 1
+        `,
+        [data.reviewId],
+      );
+
+      if (reviewRows.length === 0) {
+        throw new Error("Review not found.");
+      }
+
+      if (reviewRows[0].user_id !== data.userId) {
+        throw new Error("You can only delete your own reviews.");
+      }
+
+      await connection.execute(
+        `DELETE FROM content_report WHERE review_id = ?`,
+        [data.reviewId],
+      );
+
+      await connection.execute(`DELETE FROM reviews WHERE review_id = ?`, [
+        data.reviewId,
+      ]);
+
+      await connection.commit();
+
+      return {
+        success: true,
+        message: "Review deleted successfully.",
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   });
