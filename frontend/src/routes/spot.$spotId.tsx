@@ -717,6 +717,8 @@ function SpotDetailsPage() {
           onOpenChange={setReportSpotOpen}
           type="spot"
           targetName={spot.spot_name}
+          userId={user?.userId}
+          spotId={spot.spot_id}
         />
         <ReportModal
           open={reportReviewTarget !== null}
@@ -724,6 +726,8 @@ function SpotDetailsPage() {
             if (!open) setReportReviewTarget(null);
           }}
           type="review"
+          userId={user?.userId}
+          reviewId={reportReviewTarget}
         />
         <ConfirmationModal
           open={deleteReviewTarget !== null}

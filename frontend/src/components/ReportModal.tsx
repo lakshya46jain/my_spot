@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Flag, CheckCircle2 } from "lucide-react";
+import { createReport } from "@/server/reports";
+import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 
 const SPOT_REPORT_REASONS = [
   "Incorrect location",
@@ -36,6 +38,9 @@ interface ReportModalProps {
   onOpenChange: (open: boolean) => void;
   type: "spot" | "review";
   targetName?: string;
+  userId?: number | null;
+  spotId?: number;
+  reviewId?: number | null;
 }
 
 export function ReportModal({
@@ -43,16 +48,48 @@ export function ReportModal({
   onOpenChange,
   type,
   targetName,
+  userId,
+  spotId,
+  reviewId,
 }: ReportModalProps) {
   const [selectedReason, setSelectedReason] = useState<string | null>(null);
   const [details, setDetails] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const reasons = type === "spot" ? SPOT_REPORT_REASONS : REVIEW_REPORT_REASONS;
 
-  const handleSubmit = () => {
-    // TODO: wire report spot/review API — send selectedReason + details to backend
-    setSubmitted(true);
+  const handleSubmit = async () => {
+    if (!selectedReason) return;
+
+    try {
+      setSubmitting(true);
+      setError("");
+
+      if (!userId) {
+        throw new Error("You must be signed in to submit a report.");
+      }
+
+      await createReport({
+        data: {
+          userId,
+          type,
+          spotId,
+          reviewId: reviewId ?? undefined,
+          reason: selectedReason,
+          details,
+        },
+      });
+
+      setSubmitted(true);
+    } catch (err) {
+      setError(
+        getUserFriendlyErrorMessage(err, `Could not submit your ${type} report.`),
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleClose = () => {
@@ -62,6 +99,8 @@ export function ReportModal({
       setSelectedReason(null);
       setDetails("");
       setSubmitted(false);
+      setError("");
+      setSubmitting(false);
     }, 200);
   };
 
@@ -132,18 +171,21 @@ export function ReportModal({
               className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             />
           </div>
+          {error ? <p className="text-sm text-destructive">{error}</p> : null}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
-          <Button variant="outline" onClick={handleClose}>
+          <Button variant="outline" onClick={handleClose} disabled={submitting}>
             Cancel
           </Button>
           <Button
             variant="destructive"
-            onClick={handleSubmit}
-            disabled={!selectedReason}
+            onClick={() => {
+              void handleSubmit();
+            }}
+            disabled={!selectedReason || submitting}
           >
-            Submit Report
+            {submitting ? "Submitting..." : "Submit Report"}
           </Button>
         </DialogFooter>
       </DialogContent>
