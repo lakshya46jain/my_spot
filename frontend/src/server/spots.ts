@@ -254,7 +254,7 @@ export const searchSpots = createServerFn({ method: "POST" })
       `;
     }
 
-    const [rows] = await db.execute<SpotRow[]>(sql, params);
+    const [rows] = await db.execute<SpotRow[]>(sql, params as (string | number | null)[]);
     return rows.map(normalizeSpot);
   });
 

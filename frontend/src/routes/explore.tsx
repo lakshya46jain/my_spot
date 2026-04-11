@@ -171,12 +171,7 @@ function ExplorePage() {
             {
               input: inputValue,
               sessionToken: sessionTokenRef.current,
-              origin: selectedLocation
-                ? {
-                    lat: selectedLocation.lat,
-                    lng: selectedLocation.lng,
-                  }
-                : undefined,
+            origin: undefined,
             },
           );
 

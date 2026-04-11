@@ -27,6 +27,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import {
+  OperatingHoursSection,
+  createDefaultHours,
+  type DayHours,
+} from "@/components/OperatingHoursSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { createSpot } from "@/server/spots";
@@ -117,6 +122,7 @@ function AddSpotPage() {
   >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [operatingHours, setOperatingHours] = useState<DayHours[]>(createDefaultHours());
   const sessionTokenRef = useRef<unknown>(null);
 
   const handleInputChange = (
@@ -358,6 +364,11 @@ function AddSpotPage() {
         },
       });
 
+      // TODO: after createSpot succeeds, insert operating hours into spot_hours
+      // TODO: convert 12-hour UI values into MySQL TIME format using toMySQLTime()
+      // TODO: skip closed days or persist null times depending on backend rule
+      // TODO: attach new spotId to each hours row before insert
+
       if (result?.success) {
         setMessage(
           "Spot submitted successfully! Thanks for contributing. It is now pending review.",
@@ -371,6 +382,7 @@ function AddSpotPage() {
           longitude: "",
           status: "pending",
         });
+        setOperatingHours(createDefaultHours());
       }
     } catch (err) {
       setError(
@@ -686,7 +698,13 @@ function AddSpotPage() {
               </div>
             </SectionCard>
 
-            {/* ─── Section 4: Advanced (collapsible) ─── */}
+            {/* ─── Section 4: Operating Hours ─── */}
+            <OperatingHoursSection
+              hours={operatingHours}
+              onChange={setOperatingHours}
+            />
+
+            {/* ─── Section 5: Advanced (collapsible) ─── */}
             <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
               <button
                 type="button"
@@ -698,7 +716,7 @@ function AddSpotPage() {
                     Advanced Details
                   </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    Optional — parent location, attributes, hours
+                    Optional — parent location, attributes
                   </p>
                 </div>
                 {showAdvanced ? (
@@ -756,20 +774,7 @@ function AddSpotPage() {
                     <p className="mt-1.5 text-xs text-muted-foreground">
                       Attribute selection coming in the next phase.
                     </p>
-                    {/* TODO: Add attributes and hours once backend wiring is implemented */}
-                  </div>
-
-                  {/* Hours placeholder */}
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Operating Hours
-                    </label>
-                    <div className="rounded-xl border border-border bg-warm-50/50 p-4 text-center">
-                      <p className="text-sm text-muted-foreground">
-                        Hours management coming in the next phase.
-                      </p>
-                    </div>
-                    {/* TODO: Add spot_hours form when backend is ready */}
+                    {/* TODO: Add attributes once backend wiring is implemented */}
                   </div>
                 </div>
               )}
@@ -825,6 +830,7 @@ function AddSpotPage() {
                     });
                     setError("");
                     setMessage("");
+                    setOperatingHours(createDefaultHours());
                   }}
                 >
                   Reset

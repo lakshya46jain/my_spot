@@ -60,7 +60,7 @@ export const createReport = createServerFn({ method: "POST" })
     if (data.type === "spot") {
       const [spotRows] = await db.execute<ExistingRow[]>(
         `SELECT spot_id AS id FROM spots WHERE spot_id = ? LIMIT 1`,
-        [data.spotId],
+        [data.spotId!],
       );
 
       if (spotRows.length === 0) {
@@ -69,7 +69,7 @@ export const createReport = createServerFn({ method: "POST" })
     } else {
       const [reviewRows] = await db.execute<ExistingRow[]>(
         `SELECT review_id AS id FROM reviews WHERE review_id = ? LIMIT 1`,
-        [data.reviewId],
+        [data.reviewId!],
       );
 
       if (reviewRows.length === 0) {

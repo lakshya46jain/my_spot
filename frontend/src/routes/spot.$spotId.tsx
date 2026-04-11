@@ -434,7 +434,7 @@ function SpotDetailsPage() {
                   onClick={() => {
                     if (hasCoordinates) {
                       window.open(
-                        getGoogleMapsSearchUrl(spot.latitude, spot.longitude),
+                        getGoogleMapsSearchUrl(spot.latitude!, spot.longitude!),
                         "_blank",
                       );
                     }
@@ -492,8 +492,8 @@ function SpotDetailsPage() {
                   referrerPolicy="no-referrer-when-downgrade"
                   src={getGoogleMapsEmbedUrl(
                     import.meta.env.VITE_GOOGLE_MAPS_API_KEY!,
-                    spot.latitude,
-                    spot.longitude,
+                    spot.latitude!,
+                    spot.longitude!,
                   )}
                 />
               ) : (
