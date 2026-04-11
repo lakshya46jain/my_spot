@@ -13,7 +13,7 @@ const createSpotSchema = z.object({
   address: z.string().trim().min(1, "Location is required."),
   latitude: z.string().trim().min(1, "Location coordinates are required."),
   longitude: z.string().trim().min(1, "Location coordinates are required."),
-  status: spotStatusSchema.default("active"),
+  status: spotStatusSchema.default("pending"),
 });
 
 type CreateSpotInput = z.infer<typeof createSpotSchema>;

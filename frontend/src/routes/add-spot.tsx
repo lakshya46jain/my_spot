@@ -104,7 +104,7 @@ function AddSpotPage() {
     address: "",
     latitude: "",
     longitude: "",
-    status: "active", // Hidden from user — defaults to active. TODO: change to "pending" for moderation flow
+    status: "pending",
   });
 
   const [loading, setLoading] = useState(false);
@@ -359,7 +359,9 @@ function AddSpotPage() {
       });
 
       if (result?.success) {
-        setMessage("Spot created successfully! Thank you for contributing.");
+        setMessage(
+          "Spot submitted successfully! Thanks for contributing. It is now pending review.",
+        );
         setFormData({
           spot_name: "",
           spot_type: "",
@@ -367,7 +369,7 @@ function AddSpotPage() {
           address: "",
           latitude: "",
           longitude: "",
-          status: "active",
+          status: "pending",
         });
       }
     } catch (err) {
@@ -819,7 +821,7 @@ function AddSpotPage() {
                       address: "",
                       latitude: "",
                       longitude: "",
-                      status: "active",
+                      status: "pending",
                     });
                     setError("");
                     setMessage("");
