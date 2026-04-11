@@ -4,6 +4,33 @@ import { z } from "zod";
 import { db } from "./db";
 
 const spotStatusSchema = z.enum(["active", "inactive", "pending"]);
+const meridiemSchema = z.enum(["AM", "PM"]);
+const optionalMeridiemSchema = z.union([meridiemSchema, z.literal("")]);
+const dayOfWeekSchema = z.enum([
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+]);
+
+const timeRangeSchema = z.object({
+  openHour: z.string().trim(),
+  openMinute: z.string().trim(),
+  openMeridiem: optionalMeridiemSchema,
+  closeHour: z.string().trim(),
+  closeMinute: z.string().trim(),
+  closeMeridiem: optionalMeridiemSchema,
+});
+
+const dayHoursSchema = z.object({
+  day: dayOfWeekSchema,
+  closed: z.boolean(),
+  timeRanges: z.array(timeRangeSchema),
+  notes: z.string().max(255).optional().default(""),
+});
 
 const createSpotSchema = z.object({
   userId: z.number().int().positive(),
@@ -14,6 +41,7 @@ const createSpotSchema = z.object({
   latitude: z.string().trim().min(1, "Location coordinates are required."),
   longitude: z.string().trim().min(1, "Location coordinates are required."),
   status: spotStatusSchema.default("pending"),
+  operatingHours: z.array(dayHoursSchema).optional().default([]),
 });
 
 type CreateSpotInput = z.infer<typeof createSpotSchema>;
@@ -27,6 +55,7 @@ const updateSpotSchema = z.object({
   latitude: z.string().trim().optional().or(z.literal("")),
   longitude: z.string().trim().optional().or(z.literal("")),
   status: spotStatusSchema.optional(),
+  operatingHours: z.array(dayHoursSchema).optional(),
 });
 
 type UpdateSpotInput = z.infer<typeof updateSpotSchema>;
@@ -73,6 +102,139 @@ type SpotRow = RowDataPacket & {
 type ExistingSpotRow = RowDataPacket & {
   spot_id: number;
 };
+
+type SpotHoursRow = RowDataPacket & {
+  hours_id: number;
+  spot_id: number;
+  days_of_week: z.infer<typeof dayOfWeekSchema>;
+  open_time: string | null;
+  close_time: string | null;
+  notes: string | null;
+};
+
+type SpotHoursPayload = {
+  day: z.infer<typeof dayOfWeekSchema>;
+  open_time: string | null;
+  close_time: string | null;
+  notes: string | null;
+};
+
+function toMySqlTime(
+  hour: string,
+  minute: string,
+  meridiem: z.infer<typeof meridiemSchema>,
+) {
+  let parsedHour = Number.parseInt(hour, 10);
+
+  if (Number.isNaN(parsedHour) || parsedHour < 1 || parsedHour > 12) {
+    throw new Error("Operating hours include an invalid hour value.");
+  }
+
+  if (meridiem === "AM" && parsedHour === 12) {
+    parsedHour = 0;
+  } else if (meridiem === "PM" && parsedHour !== 12) {
+    parsedHour += 12;
+  }
+
+  return `${String(parsedHour).padStart(2, "0")}:${minute}:00`;
+}
+
+function timeToMinutes(
+  hour: string,
+  minute: string,
+  meridiem: z.infer<typeof meridiemSchema>,
+) {
+  const mysqlTime = toMySqlTime(hour, minute, meridiem);
+  const [hours, minutes] = mysqlTime.split(":");
+
+  return Number(hours) * 60 + Number(minutes);
+}
+
+function normalizeSpotHours(rows: SpotHoursRow[]): SpotHoursPayload[] {
+  return rows.map((row) => ({
+    day: row.days_of_week,
+    open_time: row.open_time,
+    close_time: row.close_time,
+    notes: row.notes,
+  }));
+}
+
+function isBlankTimeRange(range: z.infer<typeof timeRangeSchema>) {
+  return (
+    range.openHour === "" &&
+    range.openMinute === "" &&
+    range.openMeridiem === "" &&
+    range.closeHour === "" &&
+    range.closeMinute === "" &&
+    range.closeMeridiem === ""
+  );
+}
+
+function buildSpotHoursRows(operatingHours: z.infer<typeof dayHoursSchema>[]) {
+  return operatingHours.flatMap((dayHours) => {
+    if (dayHours.closed || dayHours.timeRanges.length === 0) {
+      return [];
+    }
+
+    const trimmedNotes = dayHours.notes.trim();
+
+    return dayHours.timeRanges.map((range) => {
+      if (isBlankTimeRange(range)) {
+        return null;
+      }
+
+      if (
+        range.openHour === "" ||
+        range.openMinute === "" ||
+        range.openMeridiem === "" ||
+        range.closeHour === "" ||
+        range.closeMinute === "" ||
+        range.closeMeridiem === ""
+      ) {
+        throw new Error(
+          `${dayHours.day} must have both opening and closing times set, or be left blank.`,
+        );
+      }
+
+      const openMinutes = timeToMinutes(
+        range.openHour,
+        range.openMinute,
+        range.openMeridiem,
+      );
+      const closeMinutes = timeToMinutes(
+        range.closeHour,
+        range.closeMinute,
+        range.closeMeridiem,
+      );
+
+      if (closeMinutes <= openMinutes) {
+        throw new Error(
+          `${dayHours.day} has a closing time that must be after the opening time.`,
+        );
+      }
+
+      return {
+        day: dayHours.day,
+        open_time: toMySqlTime(
+          range.openHour,
+          range.openMinute,
+          range.openMeridiem,
+        ),
+        close_time: toMySqlTime(
+          range.closeHour,
+          range.closeMinute,
+          range.closeMeridiem,
+        ),
+        notes: trimmedNotes || null,
+      };
+    }).filter((range): range is {
+      day: z.infer<typeof dayOfWeekSchema>;
+      open_time: string;
+      close_time: string;
+      notes: string | null;
+    } => range !== null);
+  });
+}
 
 function parseNullableDecimal(value?: string) {
   if (!value || value.trim() === "") return null;
@@ -304,7 +466,39 @@ export const getSpot = createServerFn({ method: "GET" })
       throw new Error("Spot not found.");
     }
 
-    return normalizeSpot(rows[0]);
+    const [hoursRows] = await db.execute<SpotHoursRow[]>(
+      `
+      SELECT
+        hours_id,
+        spot_id,
+        days_of_week,
+        open_time,
+        close_time,
+        notes
+      FROM spot_hours
+      WHERE spot_id = ?
+      ORDER BY
+        FIELD(
+          days_of_week,
+          'Monday',
+          'Tuesday',
+          'Wednesday',
+          'Thursday',
+          'Friday',
+          'Saturday',
+          'Sunday'
+        ),
+        open_time ASC,
+        close_time ASC,
+        hours_id ASC
+      `,
+      [data.spotId],
+    );
+
+    return {
+      ...normalizeSpot(rows[0]),
+      operating_hours: normalizeSpotHours(hoursRows),
+    };
   });
 
 export const createSpot = createServerFn({ method: "POST" })
@@ -312,38 +506,76 @@ export const createSpot = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const latitude = parseRequiredDecimal(data.latitude, "Latitude");
     const longitude = parseRequiredDecimal(data.longitude, "Longitude");
+    const hoursRows = buildSpotHoursRows(data.operatingHours);
+    const connection = await db.getConnection();
 
-    const [result] = await db.execute<ResultSetHeader>(
-      `
-      INSERT INTO spots (
-        spot_name,
-        spot_type,
-        short_description,
-        address,
-        latitude,
-        longitude,
-        user_id,
-        status
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        data.spot_name.trim(),
-        data.spot_type.trim(),
-        data.short_description?.trim() || null,
-        data.address.trim(),
-        latitude,
-        longitude,
-        data.userId,
-        data.status,
-      ],
-    );
+    try {
+      await connection.beginTransaction();
 
-    return {
-      success: true,
-      spotId: result.insertId,
-      message: "Spot created successfully.",
-    };
+      const [result] = await connection.execute<ResultSetHeader>(
+        `
+        INSERT INTO spots (
+          spot_name,
+          spot_type,
+          short_description,
+          address,
+          latitude,
+          longitude,
+          user_id,
+          status
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          data.spot_name.trim(),
+          data.spot_type.trim(),
+          data.short_description?.trim() || null,
+          data.address.trim(),
+          latitude,
+          longitude,
+          data.userId,
+          data.status,
+        ],
+      );
+
+      if (hoursRows.length > 0) {
+        const placeholders = hoursRows.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const values = hoursRows.flatMap((row) => [
+          result.insertId,
+          row.day,
+          row.open_time,
+          row.close_time,
+          row.notes,
+        ]);
+
+        await connection.execute(
+          `
+          INSERT INTO spot_hours (
+            spot_id,
+            days_of_week,
+            open_time,
+            close_time,
+            notes
+          )
+          VALUES ${placeholders}
+          `,
+          values,
+        );
+      }
+
+      await connection.commit();
+
+      return {
+        success: true,
+        spotId: result.insertId,
+        message: "Spot created successfully.",
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   });
 
 export const updateSpot = createServerFn({ method: "POST" })
@@ -396,13 +628,60 @@ export const updateSpot = createServerFn({ method: "POST" })
       values.push(data.status);
     }
 
+    const replaceHours = data.operatingHours !== undefined;
+    const hoursRows = replaceHours ? buildSpotHoursRows(data.operatingHours) : [];
+
     updates.push("last_modified = CURRENT_TIMESTAMP");
     values.push(data.spotId);
 
-    await db.execute<ResultSetHeader>(
-      `UPDATE spots SET ${updates.join(", ")} WHERE spot_id = ?`,
-      values as (string | number | null)[],
-    );
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE spots SET ${updates.join(", ")} WHERE spot_id = ?`,
+        values as (string | number | null)[],
+      );
+
+      if (replaceHours) {
+        await connection.execute(`DELETE FROM spot_hours WHERE spot_id = ?`, [
+          data.spotId,
+        ]);
+
+        if (hoursRows.length > 0) {
+          const placeholders = hoursRows.map(() => "(?, ?, ?, ?, ?)").join(", ");
+          const hourValues = hoursRows.flatMap((row) => [
+            data.spotId,
+            row.day,
+            row.open_time,
+            row.close_time,
+            row.notes,
+          ]);
+
+          await connection.execute(
+            `
+            INSERT INTO spot_hours (
+              spot_id,
+              days_of_week,
+              open_time,
+              close_time,
+              notes
+            )
+            VALUES ${placeholders}
+            `,
+            hourValues,
+          );
+        }
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return {
       success: true,

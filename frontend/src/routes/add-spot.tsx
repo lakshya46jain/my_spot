@@ -99,6 +99,76 @@ function getCoordinateValue(
   return typeof coordinate === "number" ? coordinate : null;
 }
 
+function getMinutesFromRange(
+  hour: string,
+  minute: string,
+  meridiem: "AM" | "PM",
+) {
+  let parsedHour = Number.parseInt(hour, 10);
+
+  if (meridiem === "AM" && parsedHour === 12) {
+    parsedHour = 0;
+  } else if (meridiem === "PM" && parsedHour !== 12) {
+    parsedHour += 12;
+  }
+
+  return parsedHour * 60 + Number.parseInt(minute, 10);
+}
+
+function isBlankTimeRange(range: DayHours["timeRanges"][number]) {
+  return (
+    range.openHour === "" &&
+    range.openMinute === "" &&
+    range.openMeridiem === "" &&
+    range.closeHour === "" &&
+    range.closeMinute === "" &&
+    range.closeMeridiem === ""
+  );
+}
+
+function getOperatingHoursError(hours: DayHours[]) {
+  for (const dayHours of hours) {
+    if (dayHours.closed) {
+      continue;
+    }
+
+    for (const range of dayHours.timeRanges) {
+      if (isBlankTimeRange(range)) {
+        continue;
+      }
+
+      const isPartialRange =
+        range.openHour === "" ||
+        range.openMinute === "" ||
+        range.openMeridiem === "" ||
+        range.closeHour === "" ||
+        range.closeMinute === "" ||
+        range.closeMeridiem === "";
+
+      if (isPartialRange) {
+        return `${dayHours.day}: complete both open and close times or leave the range blank.`;
+      }
+
+      const openMinutes = getMinutesFromRange(
+        range.openHour,
+        range.openMinute,
+        range.openMeridiem,
+      );
+      const closeMinutes = getMinutesFromRange(
+        range.closeHour,
+        range.closeMinute,
+        range.closeMeridiem,
+      );
+
+      if (closeMinutes <= openMinutes) {
+        return `${dayHours.day}: closing time must be after opening time.`;
+      }
+    }
+  }
+
+  return null;
+}
+
 function AddSpotPage() {
   const { user, isLoggedIn } = useAuth();
 
@@ -357,17 +427,18 @@ function AddSpotPage() {
         );
       }
 
+      const operatingHoursError = getOperatingHoursError(operatingHours);
+      if (operatingHoursError) {
+        throw new Error(operatingHoursError);
+      }
+
       const result = await createSpot({
         data: {
           userId: user.userId,
           ...formData,
+          operatingHours,
         },
       });
-
-      // TODO: after createSpot succeeds, insert operating hours into spot_hours
-      // TODO: convert 12-hour UI values into MySQL TIME format using toMySQLTime()
-      // TODO: skip closed days or persist null times depending on backend rule
-      // TODO: attach new spotId to each hours row before insert
 
       if (result?.success) {
         setMessage(

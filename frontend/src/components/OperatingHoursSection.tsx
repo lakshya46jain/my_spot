@@ -16,10 +16,10 @@ import {
 export type TimeRange = {
   openHour: string;
   openMinute: string;
-  openMeridiem: "AM" | "PM";
+  openMeridiem: "AM" | "PM" | "";
   closeHour: string;
   closeMinute: string;
-  closeMeridiem: "AM" | "PM";
+  closeMeridiem: "AM" | "PM" | "";
 };
 
 export type DayHours = {
@@ -44,12 +44,12 @@ const MINUTES = ["00", "15", "30", "45"];
 
 function createEmptyTimeRange(): TimeRange {
   return {
-    openHour: "9",
-    openMinute: "00",
-    openMeridiem: "AM",
-    closeHour: "5",
-    closeMinute: "00",
-    closeMeridiem: "PM",
+    openHour: "",
+    openMinute: "",
+    openMeridiem: "",
+    closeHour: "",
+    closeMinute: "",
+    closeMeridiem: "",
   };
 }
 
@@ -90,11 +90,38 @@ function timeToMinutes(
   return h * 60 + parseInt(minute, 10);
 }
 
+function isRangeBlank(range: TimeRange) {
+  return (
+    range.openHour === "" &&
+    range.openMinute === "" &&
+    range.openMeridiem === "" &&
+    range.closeHour === "" &&
+    range.closeMinute === "" &&
+    range.closeMeridiem === ""
+  );
+}
+
 function validateDayHours(day: DayHours): string | null {
   if (day.closed) return null;
 
   for (let i = 0; i < day.timeRanges.length; i++) {
     const range = day.timeRanges[i];
+    if (isRangeBlank(range)) {
+      continue;
+    }
+
+    const isPartialRange =
+      range.openHour === "" ||
+      range.openMinute === "" ||
+      range.openMeridiem === "" ||
+      range.closeHour === "" ||
+      range.closeMinute === "" ||
+      range.closeMeridiem === "";
+
+    if (isPartialRange) {
+      return `Range ${i + 1}: Complete both open and close times or leave the range blank.`;
+    }
+
     const openMin = timeToMinutes(
       range.openHour,
       range.openMinute,
@@ -121,17 +148,18 @@ function MeridiemSelect({
   onChange,
   disabled,
 }: {
-  value: "AM" | "PM";
-  onChange: (v: "AM" | "PM") => void;
+  value: "AM" | "PM" | "";
+  onChange: (v: "AM" | "PM" | "") => void;
   disabled?: boolean;
 }) {
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value as "AM" | "PM")}
+      onChange={(e) => onChange(e.target.value as "AM" | "PM" | "")}
       disabled={disabled}
       className="h-9 rounded-lg border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
     >
+      <option value="">--</option>
       <option value="AM">AM</option>
       <option value="PM">PM</option>
     </select>
@@ -165,6 +193,7 @@ function TimeRangeInput({
           disabled={disabled}
           className="h-9 w-16 rounded-lg border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
+          <option value="">--</option>
           {HOURS.map((h) => (
             <option key={h} value={h}>
               {h}
@@ -178,6 +207,7 @@ function TimeRangeInput({
           disabled={disabled}
           className="h-9 w-16 rounded-lg border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
+          <option value="">--</option>
           {MINUTES.map((m) => (
             <option key={m} value={m}>
               {m}
@@ -201,6 +231,7 @@ function TimeRangeInput({
           disabled={disabled}
           className="h-9 w-16 rounded-lg border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
+          <option value="">--</option>
           {HOURS.map((h) => (
             <option key={h} value={h}>
               {h}
@@ -214,6 +245,7 @@ function TimeRangeInput({
           disabled={disabled}
           className="h-9 w-16 rounded-lg border border-input bg-transparent px-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
         >
+          <option value="">--</option>
           {MINUTES.map((m) => (
             <option key={m} value={m}>
               {m}

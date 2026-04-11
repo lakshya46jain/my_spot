@@ -22,7 +22,7 @@ import {
   updateReview,
 } from "@/server/reviews";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
-import type { Spot, SpotReview } from "@/types/api";
+import type { Spot, SpotOperatingHour, SpotReview } from "@/types/api";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -94,6 +94,34 @@ function formatReviewDate(value: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+function formatStoredTime(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const [hoursText = "0", minutes = "00"] = value.split(":");
+  const hours = Number.parseInt(hoursText, 10);
+  const normalizedHours = hours % 12 || 12;
+  const meridiem = hours >= 12 ? "PM" : "AM";
+
+  return `${normalizedHours}:${minutes} ${meridiem}`;
+}
+
+function formatOperatingRange(hour: SpotOperatingHour) {
+  const open = formatStoredTime(hour.open_time);
+  const close = formatStoredTime(hour.close_time);
+
+  if (!open || !close) {
+    return "Hours unavailable";
+  }
+
+  return `${open} - ${close}`;
+}
+
+function getHoursForDay(hours: SpotOperatingHour[] | undefined, day: string) {
+  return (hours ?? []).filter((entry) => entry.day === day);
 }
 
 // ─── Main Component ──────────────────────────────────────────────
@@ -308,6 +336,8 @@ function SpotDetailsPage() {
   const hasCoordinates = spot.latitude !== null && spot.longitude !== null;
   const hasMapsEmbed =
     hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
+  const operatingHours = spot.operating_hours ?? [];
+  const hasOperatingHours = operatingHours.length > 0;
 
   return (
     <PageContainer className="pr-0">
@@ -518,22 +548,60 @@ function SpotDetailsPage() {
                 Hours of Operation
               </h2>
             </div>
-            {/* TODO: populate hours from spot_hours API */}
-            <div className="space-y-2">
-              {DAYS_OF_WEEK.map((day) => (
-                <div
-                  key={day}
-                  className="flex items-center justify-between py-2 px-3 rounded-lg even:bg-warm-50/50"
-                >
-                  <span className="text-sm font-medium text-foreground">
-                    {day}
-                  </span>
-                  <span className="text-sm text-muted-foreground italic">
-                    Hours coming soon
-                  </span>
-                </div>
-              ))}
-            </div>
+            {hasOperatingHours ? (
+              <div className="space-y-2">
+                {DAYS_OF_WEEK.map((day) => {
+                  const dayHours = getHoursForDay(operatingHours, day);
+                  const notes = Array.from(
+                    new Set(
+                      dayHours
+                        .map((entry) => entry.notes?.trim())
+                        .filter((note): note is string => Boolean(note)),
+                    ),
+                  );
+
+                  return (
+                    <div
+                      key={day}
+                      className="py-2 px-3 rounded-lg even:bg-warm-50/50"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <span className="text-sm font-medium text-foreground">
+                          {day}
+                        </span>
+                        <div className="text-right">
+                          {dayHours.length > 0 ? (
+                            <div className="space-y-1">
+                              {dayHours.map((entry, index) => (
+                                <p
+                                  key={`${day}-${entry.open_time}-${entry.close_time}-${index}`}
+                                  className="text-sm text-muted-foreground"
+                                >
+                                  {formatOperatingRange(entry)}
+                                </p>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground italic">
+                              Closed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {notes.length > 0 ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {notes.join(" • ")}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground italic">
+                Hours have not been added for this spot yet.
+              </p>
+            )}
           </div>
 
           {/* ─── Spot Creator ─── */}

@@ -1,3 +1,10 @@
+export interface SpotOperatingHour {
+  day: string;
+  open_time: string | null;
+  close_time: string | null;
+  notes: string | null;
+}
+
 export interface Spot {
   spot_id: number;
   spot_name: string;
@@ -14,6 +21,7 @@ export interface Spot {
   average_rating: number | null;
   review_count: number;
   distance_miles?: number | null;
+  operating_hours?: SpotOperatingHour[];
 }
 
 export interface SpotReview {
