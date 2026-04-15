@@ -152,12 +152,12 @@ function getOperatingHoursError(hours: DayHours[]) {
       const openMinutes = getMinutesFromRange(
         range.openHour,
         range.openMinute,
-        range.openMeridiem,
+        range.openMeridiem as "AM" | "PM",
       );
       const closeMinutes = getMinutesFromRange(
         range.closeHour,
         range.closeMinute,
-        range.closeMeridiem,
+        range.closeMeridiem as "AM" | "PM",
       );
 
       if (closeMinutes <= openMinutes) {
@@ -436,7 +436,7 @@ function AddSpotPage() {
         data: {
           userId: user.userId,
           ...formData,
-          operatingHours,
+          operatingHours: operatingHours as any,
         },
       });
 

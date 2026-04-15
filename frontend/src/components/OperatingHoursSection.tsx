@@ -13,13 +13,15 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────
 
+export type Meridiem = "AM" | "PM" | "";
+
 export type TimeRange = {
   openHour: string;
   openMinute: string;
-  openMeridiem: "AM" | "PM" | "";
+  openMeridiem: Meridiem;
   closeHour: string;
   closeMinute: string;
-  closeMeridiem: "AM" | "PM" | "";
+  closeMeridiem: Meridiem;
 };
 
 export type DayHours = {
@@ -125,12 +127,12 @@ function validateDayHours(day: DayHours): string | null {
     const openMin = timeToMinutes(
       range.openHour,
       range.openMinute,
-      range.openMeridiem,
+      range.openMeridiem as "AM" | "PM",
     );
     const closeMin = timeToMinutes(
       range.closeHour,
       range.closeMinute,
-      range.closeMeridiem,
+      range.closeMeridiem as "AM" | "PM",
     );
 
     if (closeMin <= openMin) {

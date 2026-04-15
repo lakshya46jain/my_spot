@@ -20,6 +20,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AddSpotRouteImport } from './routes/add-spot'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SpotSpotIdRouteImport } from './routes/spot.$spotId'
+import { Route as AdminUsersRouteImport } from './routes/admin.users'
+import { Route as AdminSpotsRouteImport } from './routes/admin.spots'
+import { Route as AdminRolesRouteImport } from './routes/admin.roles'
+import { Route as AdminReportedSpotsRouteImport } from './routes/admin.reported-spots'
+import { Route as AdminReportedReviewsRouteImport } from './routes/admin.reported-reviews'
+import { Route as AdminPermissionsRouteImport } from './routes/admin.permissions'
+import { Route as AdminPendingSpotsRouteImport } from './routes/admin.pending-spots'
+import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
 
 const UpdatePasswordRoute = UpdatePasswordRouteImport.update({
   id: '/update-password',
@@ -76,11 +84,51 @@ const SpotSpotIdRoute = SpotSpotIdRouteImport.update({
   path: '/spot/$spotId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminUsersRoute = AdminUsersRouteImport.update({
+  id: '/users',
+  path: '/users',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminSpotsRoute = AdminSpotsRouteImport.update({
+  id: '/spots',
+  path: '/spots',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminRolesRoute = AdminRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminReportedSpotsRoute = AdminReportedSpotsRouteImport.update({
+  id: '/reported-spots',
+  path: '/reported-spots',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminReportedReviewsRoute = AdminReportedReviewsRouteImport.update({
+  id: '/reported-reviews',
+  path: '/reported-reviews',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPermissionsRoute = AdminPermissionsRouteImport.update({
+  id: '/permissions',
+  path: '/permissions',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminPendingSpotsRoute = AdminPendingSpotsRouteImport.update({
+  id: '/pending-spots',
+  path: '/pending-spots',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
+  id: '/analytics',
+  path: '/analytics',
+  getParentRoute: () => AdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/add-spot': typeof AddSpotRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/explore': typeof ExploreRoute
   '/favorites': typeof FavoritesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -88,12 +136,20 @@ export interface FileRoutesByFullPath {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/pending-spots': typeof AdminPendingSpotsRoute
+  '/admin/permissions': typeof AdminPermissionsRoute
+  '/admin/reported-reviews': typeof AdminReportedReviewsRoute
+  '/admin/reported-spots': typeof AdminReportedSpotsRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/spots': typeof AdminSpotsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/add-spot': typeof AddSpotRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/explore': typeof ExploreRoute
   '/favorites': typeof FavoritesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -101,13 +157,21 @@ export interface FileRoutesByTo {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/pending-spots': typeof AdminPendingSpotsRoute
+  '/admin/permissions': typeof AdminPermissionsRoute
+  '/admin/reported-reviews': typeof AdminReportedReviewsRoute
+  '/admin/reported-spots': typeof AdminReportedSpotsRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/spots': typeof AdminSpotsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/add-spot': typeof AddSpotRoute
-  '/admin': typeof AdminRoute
+  '/admin': typeof AdminRouteWithChildren
   '/explore': typeof ExploreRoute
   '/favorites': typeof FavoritesRoute
   '/forgot-password': typeof ForgotPasswordRoute
@@ -115,6 +179,14 @@ export interface FileRoutesById {
   '/register': typeof RegisterRoute
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
+  '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/pending-spots': typeof AdminPendingSpotsRoute
+  '/admin/permissions': typeof AdminPermissionsRoute
+  '/admin/reported-reviews': typeof AdminReportedReviewsRoute
+  '/admin/reported-spots': typeof AdminReportedSpotsRoute
+  '/admin/roles': typeof AdminRolesRoute
+  '/admin/spots': typeof AdminSpotsRoute
+  '/admin/users': typeof AdminUsersRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRouteTypes {
@@ -130,6 +202,14 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/admin/analytics'
+    | '/admin/pending-spots'
+    | '/admin/permissions'
+    | '/admin/reported-reviews'
+    | '/admin/reported-spots'
+    | '/admin/roles'
+    | '/admin/spots'
+    | '/admin/users'
     | '/spot/$spotId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -143,6 +223,14 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/admin/analytics'
+    | '/admin/pending-spots'
+    | '/admin/permissions'
+    | '/admin/reported-reviews'
+    | '/admin/reported-spots'
+    | '/admin/roles'
+    | '/admin/spots'
+    | '/admin/users'
     | '/spot/$spotId'
   id:
     | '__root__'
@@ -156,13 +244,21 @@ export interface FileRouteTypes {
     | '/register'
     | '/signin'
     | '/update-password'
+    | '/admin/analytics'
+    | '/admin/pending-spots'
+    | '/admin/permissions'
+    | '/admin/reported-reviews'
+    | '/admin/reported-spots'
+    | '/admin/roles'
+    | '/admin/spots'
+    | '/admin/users'
     | '/spot/$spotId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AddSpotRoute: typeof AddSpotRoute
-  AdminRoute: typeof AdminRoute
+  AdminRoute: typeof AdminRouteWithChildren
   ExploreRoute: typeof ExploreRoute
   FavoritesRoute: typeof FavoritesRoute
   ForgotPasswordRoute: typeof ForgotPasswordRoute
@@ -252,13 +348,93 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SpotSpotIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/users': {
+      id: '/admin/users'
+      path: '/users'
+      fullPath: '/admin/users'
+      preLoaderRoute: typeof AdminUsersRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/spots': {
+      id: '/admin/spots'
+      path: '/spots'
+      fullPath: '/admin/spots'
+      preLoaderRoute: typeof AdminSpotsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/roles': {
+      id: '/admin/roles'
+      path: '/roles'
+      fullPath: '/admin/roles'
+      preLoaderRoute: typeof AdminRolesRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reported-spots': {
+      id: '/admin/reported-spots'
+      path: '/reported-spots'
+      fullPath: '/admin/reported-spots'
+      preLoaderRoute: typeof AdminReportedSpotsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/reported-reviews': {
+      id: '/admin/reported-reviews'
+      path: '/reported-reviews'
+      fullPath: '/admin/reported-reviews'
+      preLoaderRoute: typeof AdminReportedReviewsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/permissions': {
+      id: '/admin/permissions'
+      path: '/permissions'
+      fullPath: '/admin/permissions'
+      preLoaderRoute: typeof AdminPermissionsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/pending-spots': {
+      id: '/admin/pending-spots'
+      path: '/pending-spots'
+      fullPath: '/admin/pending-spots'
+      preLoaderRoute: typeof AdminPendingSpotsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/analytics': {
+      id: '/admin/analytics'
+      path: '/analytics'
+      fullPath: '/admin/analytics'
+      preLoaderRoute: typeof AdminAnalyticsRouteImport
+      parentRoute: typeof AdminRoute
+    }
   }
 }
+
+interface AdminRouteChildren {
+  AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminPendingSpotsRoute: typeof AdminPendingSpotsRoute
+  AdminPermissionsRoute: typeof AdminPermissionsRoute
+  AdminReportedReviewsRoute: typeof AdminReportedReviewsRoute
+  AdminReportedSpotsRoute: typeof AdminReportedSpotsRoute
+  AdminRolesRoute: typeof AdminRolesRoute
+  AdminSpotsRoute: typeof AdminSpotsRoute
+  AdminUsersRoute: typeof AdminUsersRoute
+}
+
+const AdminRouteChildren: AdminRouteChildren = {
+  AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminPendingSpotsRoute: AdminPendingSpotsRoute,
+  AdminPermissionsRoute: AdminPermissionsRoute,
+  AdminReportedReviewsRoute: AdminReportedReviewsRoute,
+  AdminReportedSpotsRoute: AdminReportedSpotsRoute,
+  AdminRolesRoute: AdminRolesRoute,
+  AdminSpotsRoute: AdminSpotsRoute,
+  AdminUsersRoute: AdminUsersRoute,
+}
+
+const AdminRouteWithChildren = AdminRoute._addFileChildren(AdminRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AddSpotRoute: AddSpotRoute,
-  AdminRoute: AdminRoute,
+  AdminRoute: AdminRouteWithChildren,
   ExploreRoute: ExploreRoute,
   FavoritesRoute: FavoritesRoute,
   ForgotPasswordRoute: ForgotPasswordRoute,

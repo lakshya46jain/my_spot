@@ -629,7 +629,7 @@ export const updateSpot = createServerFn({ method: "POST" })
     }
 
     const replaceHours = data.operatingHours !== undefined;
-    const hoursRows = replaceHours ? buildSpotHoursRows(data.operatingHours) : [];
+    const hoursRows = replaceHours ? buildSpotHoursRows(data.operatingHours ?? []) : [];
 
     updates.push("last_modified = CURRENT_TIMESTAMP");
     values.push(data.spotId);
