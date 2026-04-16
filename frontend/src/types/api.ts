@@ -21,6 +21,8 @@ export interface Spot {
   average_rating: number | null;
   review_count: number;
   distance_miles?: number | null;
+  is_favorited?: boolean;
+  favorited_at?: string | null;
   operating_hours?: SpotOperatingHour[];
 }
 

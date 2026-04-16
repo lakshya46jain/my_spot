@@ -77,6 +77,7 @@ const searchSpotsSchema = z.object({
   latitude: z.number().finite().optional(),
   longitude: z.number().finite().optional(),
   radiusMiles: z.number().positive().max(100).optional().default(5),
+  viewerUserId: z.number().int().positive().optional(),
 });
 
 type SearchSpotsInput = z.infer<typeof searchSpotsSchema>;
@@ -97,6 +98,7 @@ type SpotRow = RowDataPacket & {
   average_rating: number | string | null;
   review_count: number;
   distance_miles?: number | null;
+  is_favorited?: 0 | 1 | boolean | null;
 };
 
 type ExistingSpotRow = RowDataPacket & {
@@ -265,6 +267,7 @@ function normalizeSpot(row: SpotRow) {
       row.distance_miles === undefined || row.distance_miles === null
         ? row.distance_miles
         : Number(row.distance_miles),
+    is_favorited: Boolean(row.is_favorited),
   };
 }
 
@@ -336,6 +339,18 @@ export const searchSpots = createServerFn({ method: "POST" })
       params.push(data.latitude, data.longitude, data.latitude);
     }
 
+    const favoriteJoin = data.viewerUserId
+      ? `
+      LEFT JOIN favorites f
+        ON s.spot_id = f.spot_id
+        AND f.user_id = ?
+      `
+      : "";
+
+    if (data.viewerUserId) {
+      params.push(data.viewerUserId);
+    }
+
     let sql = `
       SELECT
         s.spot_id,
@@ -352,9 +367,11 @@ export const searchSpots = createServerFn({ method: "POST" })
         u.display_name AS creator_name,
         AVG(r.rating) AS average_rating,
         COUNT(r.review_id) AS review_count,
+        ${data.viewerUserId ? "MAX(CASE WHEN f.user_id IS NULL THEN 0 ELSE 1 END)" : "0"} AS is_favorited,
         ${distanceSql} AS distance_miles
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
+      ${favoriteJoin}
       LEFT JOIN reviews r ON s.spot_id = r.spot_id
         AND r.deleted_at IS NULL
       WHERE 1 = 1

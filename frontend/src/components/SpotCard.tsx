@@ -4,6 +4,7 @@ import {
   Pencil,
   Trash2,
   ImageOff,
+  Heart,
   Coffee,
   BookOpen,
   Trees,
@@ -38,18 +39,22 @@ interface SpotCardProps {
   spot: Spot;
   isOwner?: boolean;
   isLoggedIn?: boolean;
+  favoritePending?: boolean;
   onDelete?: (spotId: number) => void;
   onEdit?: (spotId: number) => void;
   onViewDetails?: (spotId: number) => void;
+  onToggleFavorite?: (spotId: number, nextIsFavorited: boolean) => void;
 }
 
 export function SpotCard({
   spot,
   isOwner = false,
   isLoggedIn = false,
+  favoritePending = false,
   onDelete,
   onEdit,
   onViewDetails,
+  onToggleFavorite,
 }: SpotCardProps) {
   const typeIcon = SPOT_TYPE_ICONS[spot.spot_type] ?? (
     <MoreHorizontal className="h-3.5 w-3.5" />
@@ -57,11 +62,35 @@ export function SpotCard({
   const typeLabel = SPOT_TYPE_LABELS[spot.spot_type] ?? spot.spot_type;
   const averageRating = spot.average_rating;
   const reviewCount = spot.review_count;
+  const canFavorite = isLoggedIn && Boolean(onToggleFavorite);
+  const isFavorited = Boolean(spot.is_favorited);
 
   return (
     <div className="group rounded-2xl border border-border bg-card overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300 flex flex-col">
       {/* Image Area */}
       <div className="relative h-44 bg-warm-100 flex items-center justify-center overflow-hidden">
+        {canFavorite ? (
+          <button
+            type="button"
+            className={`absolute right-3 top-3 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/70 bg-background/90 text-muted-foreground shadow-sm backdrop-blur-sm transition-all duration-200 ${
+              isFavorited
+                ? "opacity-100 text-rose-500"
+                : "opacity-0 group-hover:opacity-100 hover:text-rose-500"
+            } ${favoritePending ? "cursor-wait" : ""}`}
+            onClick={() => onToggleFavorite?.(spot.spot_id, !isFavorited)}
+            disabled={favoritePending}
+            aria-label={
+              isFavorited ? "Remove from favorites" : "Add to favorites"
+            }
+            aria-pressed={isFavorited}
+          >
+            <Heart
+              className={`h-4 w-4 transition-transform duration-200 ${
+                isFavorited ? "fill-current" : ""
+              } ${favoritePending ? "scale-90" : "group-hover:scale-110"}`}
+            />
+          </button>
+        ) : null}
         <div className="flex flex-col items-center gap-2 text-warm-400">
           <ImageOff className="h-10 w-10" />
           <span className="text-xs font-medium">Photo coming soon</span>

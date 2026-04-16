@@ -21,9 +21,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { deleteSpot, searchSpots } from "@/server/spots";
+import { addFavoriteSpot, removeFavoriteSpot } from "@/server/favorites";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/explore")({
   component: ExplorePage,
@@ -98,6 +100,7 @@ function ExplorePage() {
   const [reviewedOnly, setReviewedOnly] = useState(false);
   const [sortBy, setSortBy] = useState("newest");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [favoritePendingIds, setFavoritePendingIds] = useState<number[]>([]);
   const sessionTokenRef = useRef<unknown>(null);
 
   useEffect(() => {
@@ -119,6 +122,7 @@ function ExplorePage() {
             latitude: selectedLocation?.lat,
             longitude: selectedLocation?.lng,
             radiusMiles: Number(radiusMiles),
+            viewerUserId: user?.userId,
           },
         });
         setSpots(result ?? []);
@@ -135,7 +139,7 @@ function ExplorePage() {
     };
 
     void runSpotSearch();
-  }, [debouncedSearchInput, selectedLocation, radiusMiles, refreshKey]);
+  }, [debouncedSearchInput, selectedLocation, radiusMiles, refreshKey, user?.userId]);
 
   useEffect(() => {
     const inputValue = searchInput.trim();
@@ -332,6 +336,51 @@ function ExplorePage() {
           err,
           "Something went wrong while deleting the spot.",
         ),
+      );
+    }
+  };
+
+  const handleToggleFavorite = async (
+    spotId: number,
+    nextIsFavorited: boolean,
+  ) => {
+    if (!user) {
+      toast.error("Sign in to save favorites.");
+      return;
+    }
+
+    const previousSpots = spots;
+
+    setFavoritePendingIds((current) => [...current, spotId]);
+    setSpots((current) =>
+      current.map((spot) =>
+        spot.spot_id === spotId
+          ? { ...spot, is_favorited: nextIsFavorited }
+          : spot,
+      ),
+    );
+
+    try {
+      const result = nextIsFavorited
+        ? await addFavoriteSpot({
+            data: { userId: user.userId, spotId },
+          })
+        : await removeFavoriteSpot({
+            data: { userId: user.userId, spotId },
+          });
+
+      toast.success(result.message);
+    } catch (err) {
+      setSpots(previousSpots);
+      toast.error(
+        getUserFriendlyErrorMessage(
+          err,
+          "We couldn't update favorites right now.",
+        ),
+      );
+    } finally {
+      setFavoritePendingIds((current) =>
+        current.filter((pendingId) => pendingId !== spotId),
       );
     }
   };
@@ -700,6 +749,7 @@ function ExplorePage() {
                   spot={spot}
                   isLoggedIn={isLoggedIn}
                   isOwner={user?.userId === spot.user_id}
+                  favoritePending={favoritePendingIds.includes(spot.spot_id)}
                   onDelete={(spotId) => {
                     const target = visibleSpots.find((s) => s.spot_id === spotId);
                     if (target) setDeleteTarget(target);
@@ -709,6 +759,7 @@ function ExplorePage() {
                     console.log("Edit spot:", spotId);
                   }}
                   onViewDetails={handleViewDetails}
+                  onToggleFavorite={handleToggleFavorite}
                 />
               ))}
             </div>

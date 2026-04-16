@@ -137,13 +137,18 @@ function SpotDetailsPage() {
   const isPendingAdminPreview =
     search.adminPreview === true && search.from === "pending-spots";
   const isAdminSpotsView = search.from === "admin-spots";
+  const isFavoritesView = search.from === "favorites";
   const backTarget = isPendingAdminPreview
     ? "/admin/pending-spots"
+    : isFavoritesView
+      ? "/favorites"
     : isAdminSpotsView
       ? "/admin/spots"
       : "/explore";
   const backLabel = isPendingAdminPreview
     ? "Back to Pending Spots"
+    : isFavoritesView
+      ? "Back to Favorites"
     : isAdminSpotsView
       ? "Back to All Spots"
       : "Back to Explore";
