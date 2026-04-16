@@ -44,15 +44,16 @@ INSERT INTO users (
     display_name,
     email,
     password_hash,
+    last_login,
     is_active,
     deleted_at,
     role_id
 ) VALUES
-(1, 'Liam Erickson', 'liam@vt.edu', 'hash1', 1, NULL, 1),
-(2, 'Sarah Collins', 'sarah@vt.edu', 'hash2', 1, NULL, 2),
-(3, 'Marcus Lee', 'marcus@vt.edu', 'hash3', 1, NULL, 3),
-(4, 'Emma Carter', 'emma@vt.edu', 'hash4', 1, NULL, 2),
-(5, 'Noah Bennett', 'noah@vt.edu', 'hash5', 1, NULL, 4);
+(1, 'Liam Erickson', 'liam@vt.edu', 'hash1', '2026-04-15 08:30:00', 1, NULL, 1),
+(2, 'Sarah Collins', 'sarah@vt.edu', 'hash2', '2026-04-14 21:15:00', 1, NULL, 2),
+(3, 'Marcus Lee', 'marcus@vt.edu', 'hash3', '2026-04-15 10:05:00', 1, NULL, 3),
+(4, 'Emma Carter', 'emma@vt.edu', 'hash4', '2026-04-13 17:20:00', 1, NULL, 2),
+(5, 'Noah Bennett', 'noah@vt.edu', 'hash5', '2026-04-12 09:45:00', 1, NULL, 4);
 
 -- ======================
 -- SPOTS

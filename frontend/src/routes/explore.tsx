@@ -339,7 +339,11 @@ function ExplorePage() {
   const navigate = useNavigate();
 
   const handleViewDetails = (spotId: number) => {
-    navigate({ to: "/spot/$spotId", params: { spotId: String(spotId) } });
+    navigate({
+      to: "/spot/$spotId",
+      params: { spotId: String(spotId) },
+      search: { from: undefined, adminPreview: false },
+    });
   };
 
   const availableSpotTypes = Array.from(

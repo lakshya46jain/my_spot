@@ -38,6 +38,7 @@ type ExistingRow = RowDataPacket & {
 type ReviewOwnershipRow = RowDataPacket & {
   review_id: number;
   user_id: number;
+  deleted_at: string | null;
 };
 
 type ReviewRow = RowDataPacket & {
@@ -81,6 +82,7 @@ export const getSpotReviews = createServerFn({ method: "GET" })
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.spot_id = ?
+        AND r.deleted_at IS NULL
         AND u.is_active = 1
         AND u.deleted_at IS NULL
       ORDER BY r.created_at DESC, r.review_id DESC
@@ -97,12 +99,18 @@ export const createReview = createServerFn({ method: "POST" })
     const trimmedReview = data.review?.trim() || null;
 
     const [spotRows] = await db.execute<ExistingRow[]>(
-      `SELECT spot_id AS id FROM spots WHERE spot_id = ? LIMIT 1`,
+      `
+      SELECT spot_id AS id
+      FROM spots
+      WHERE spot_id = ?
+        AND status = 'active'
+      LIMIT 1
+      `,
       [data.spotId],
     );
 
     if (spotRows.length === 0) {
-      throw new Error("Spot not found.");
+      throw new Error("Reviews can only be added to active spots.");
     }
 
     const [userRows] = await db.execute<ExistingRow[]>(
@@ -118,7 +126,9 @@ export const createReview = createServerFn({ method: "POST" })
     );
 
     if (userRows.length === 0) {
-      throw new Error("You must be logged in with an active account to leave a review.");
+      throw new Error(
+        "You must be logged in with an active account to leave a review.",
+      );
     }
 
     const [result] = await db.execute<ResultSetHeader>(
@@ -142,6 +152,7 @@ export const createReview = createServerFn({ method: "POST" })
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.review_id = ?
+        AND r.deleted_at IS NULL
       LIMIT 1
       `,
       [result.insertId],
@@ -165,9 +176,10 @@ export const updateReview = createServerFn({ method: "POST" })
 
     const [reviewRows] = await db.execute<ReviewOwnershipRow[]>(
       `
-      SELECT review_id, user_id
+      SELECT review_id, user_id, deleted_at
       FROM reviews
       WHERE review_id = ?
+        AND deleted_at IS NULL
       LIMIT 1
       `,
       [data.reviewId],
@@ -203,6 +215,7 @@ export const updateReview = createServerFn({ method: "POST" })
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.review_id = ?
+        AND r.deleted_at IS NULL
       LIMIT 1
       `,
       [data.reviewId],
@@ -229,7 +242,7 @@ export const deleteReview = createServerFn({ method: "POST" })
 
       const [reviewRows] = await connection.execute<ReviewOwnershipRow[]>(
         `
-        SELECT review_id, user_id
+        SELECT review_id, user_id, deleted_at
         FROM reviews
         WHERE review_id = ?
         LIMIT 1
@@ -245,14 +258,36 @@ export const deleteReview = createServerFn({ method: "POST" })
         throw new Error("You can only delete your own reviews.");
       }
 
-      await connection.execute(
-        `DELETE FROM content_report WHERE review_id = ?`,
+      if (reviewRows[0].deleted_at !== null) {
+        throw new Error("Review has already been deleted.");
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `
+        UPDATE reviews
+        SET
+          deleted_at = CURRENT_TIMESTAMP,
+          deletion_note = 'Removed by author'
+        WHERE review_id = ?
+        `,
         [data.reviewId],
       );
 
-      await connection.execute(`DELETE FROM reviews WHERE review_id = ?`, [
-        data.reviewId,
-      ]);
+      await connection.execute<ResultSetHeader>(
+        `
+        UPDATE content_report
+        SET
+          status = 'resolved',
+          resolved_at = CURRENT_TIMESTAMP,
+          resolution_note = COALESCE(
+            resolution_note,
+            'Review removed by author.'
+          )
+        WHERE review_id = ?
+          AND status = 'open'
+        `,
+        [data.reviewId],
+      );
 
       await connection.commit();
 

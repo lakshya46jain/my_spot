@@ -288,8 +288,9 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
       COUNT(r.review_id) AS review_count
     FROM spots s
     JOIN users u ON s.user_id = u.user_id
-    WHERE s.status = 'active'
     LEFT JOIN reviews r ON s.spot_id = r.spot_id
+      AND r.deleted_at IS NULL
+    WHERE s.status = 'active'
     GROUP BY
       s.spot_id,
       s.spot_name,
@@ -355,6 +356,7 @@ export const searchSpots = createServerFn({ method: "POST" })
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
       LEFT JOIN reviews r ON s.spot_id = r.spot_id
+        AND r.deleted_at IS NULL
       WHERE 1 = 1
         AND s.status = 'active'
     `;
@@ -443,6 +445,7 @@ export const getSpot = createServerFn({ method: "GET" })
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
       LEFT JOIN reviews r ON s.spot_id = r.spot_id
+        AND r.deleted_at IS NULL
       WHERE s.spot_id = ?
       GROUP BY
         s.spot_id,

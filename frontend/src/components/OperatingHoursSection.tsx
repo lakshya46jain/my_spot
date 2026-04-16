@@ -25,7 +25,7 @@ export type TimeRange = {
 };
 
 export type DayHours = {
-  day: string;
+  day: (typeof DAYS_OF_WEEK)[number];
   closed: boolean;
   timeRanges: TimeRange[];
   notes: string;

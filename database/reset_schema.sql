@@ -77,9 +77,12 @@ CREATE TABLE reviews (
     rating DECIMAL(2,1) NOT NULL,
     review TEXT,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME DEFAULT NULL,
+    deletion_note VARCHAR(255) DEFAULT NULL,
     PRIMARY KEY (review_id),
     KEY fk_reviews_spot (spot_id),
     KEY fk_reviews_user (user_id),
+    KEY idx_reviews_deleted_at (deleted_at),
     CONSTRAINT fk_reviews_spot
         FOREIGN KEY (spot_id) REFERENCES spots (spot_id),
     CONSTRAINT fk_reviews_user

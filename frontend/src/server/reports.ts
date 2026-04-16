@@ -68,7 +68,13 @@ export const createReport = createServerFn({ method: "POST" })
       }
     } else {
       const [reviewRows] = await db.execute<ExistingRow[]>(
-        `SELECT review_id AS id FROM reviews WHERE review_id = ? LIMIT 1`,
+        `
+        SELECT review_id AS id
+        FROM reviews
+        WHERE review_id = ?
+          AND deleted_at IS NULL
+        LIMIT 1
+        `,
         [data.reviewId!],
       );
 

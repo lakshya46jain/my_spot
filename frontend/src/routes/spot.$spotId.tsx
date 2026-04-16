@@ -46,6 +46,10 @@ import {
 import { useState, useEffect } from "react";
 
 export const Route = createFileRoute("/spot/$spotId")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    from: typeof search.from === "string" ? search.from : undefined,
+    adminPreview: search.adminPreview === true,
+  }),
   component: SpotDetailsPage,
 });
 
@@ -127,8 +131,22 @@ function getHoursForDay(hours: SpotOperatingHour[] | undefined, day: string) {
 // ─── Main Component ──────────────────────────────────────────────
 function SpotDetailsPage() {
   const { spotId: spotIdStr } = Route.useParams();
+  const search = Route.useSearch();
   const { isLoggedIn, user } = useAuth();
   const spotId = Number(spotIdStr);
+  const isPendingAdminPreview =
+    search.adminPreview === true && search.from === "pending-spots";
+  const isAdminSpotsView = search.from === "admin-spots";
+  const backTarget = isPendingAdminPreview
+    ? "/admin/pending-spots"
+    : isAdminSpotsView
+      ? "/admin/spots"
+      : "/explore";
+  const backLabel = isPendingAdminPreview
+    ? "Back to Pending Spots"
+    : isAdminSpotsView
+      ? "Back to All Spots"
+      : "Back to Explore";
 
   const [spot, setSpot] = useState<Spot | null>(null);
   const [reviews, setReviews] = useState<SpotReview[]>([]);
@@ -178,22 +196,27 @@ function SpotDetailsPage() {
         setLoading(false);
       }
 
-      try {
-        const reviewResults = await getSpotReviews({ data: { spotId } });
-        setReviews(reviewResults);
-      } catch (err) {
-        setReviewsError(
-          getUserFriendlyErrorMessage(err, "Could not load reviews."),
-        );
-      } finally {
+      if (isPendingAdminPreview) {
+        setReviews([]);
         setReviewsLoading(false);
+      } else {
+        try {
+          const reviewResults = await getSpotReviews({ data: { spotId } });
+          setReviews(reviewResults);
+        } catch (err) {
+          setReviewsError(
+            getUserFriendlyErrorMessage(err, "Could not load reviews."),
+          );
+        } finally {
+          setReviewsLoading(false);
+        }
       }
     }
 
     if (spotId) {
       load();
     }
-  }, [spotId]);
+  }, [isPendingAdminPreview, spotId]);
 
   const reviewCount = reviews.length;
   const aggregatedRating =
@@ -318,9 +341,9 @@ function SpotDetailsPage() {
               {error || "Spot not found"}
             </p>
             <Button asChild className="gap-2 mt-4">
-              <Link to="/explore">
+              <Link to={backTarget}>
                 <ArrowLeft className="h-4 w-4" />
-                Back to Explore
+                {backLabel}
               </Link>
             </Button>
           </div>
@@ -338,15 +361,17 @@ function SpotDetailsPage() {
     hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
   const operatingHours = spot.operating_hours ?? [];
   const hasOperatingHours = operatingHours.length > 0;
+  const canWriteReview =
+    isLoggedIn && !isPendingAdminPreview && spot.status === "active";
 
   return (
     <PageContainer className="pr-0">
       {/* Back link */}
       <div className="mb-6">
         <Button asChild className="gap-2 rounded-xl shadow-sm">
-          <Link to="/explore">
+          <Link to={backTarget}>
             <ArrowLeft className="h-4 w-4" />
-            Back to Explore
+            {backLabel}
           </Link>
         </Button>
       </div>
@@ -631,7 +656,7 @@ function SpotDetailsPage() {
           </div>
 
           {/* ─── Write a Review ─── */}
-          {isLoggedIn && (
+          {canWriteReview ? (
             <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
               <h2 className="text-lg font-display text-foreground mb-4">
                 Write a Review
@@ -680,9 +705,10 @@ function SpotDetailsPage() {
                 ) : null}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* ─── Reviews List ─── */}
+          {!isPendingAdminPreview ? (
           <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 className="text-lg font-display text-foreground mb-4">
               Reviews ({reviewCount})
@@ -777,6 +803,7 @@ function SpotDetailsPage() {
               </div>
             )}
           </div>
+          ) : null}
         </div>
 
         {/* Report modals */}

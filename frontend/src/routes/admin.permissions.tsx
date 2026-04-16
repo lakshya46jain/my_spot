@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { AdminSectionShell } from "@/components/admin/AdminSectionShell";
 import { Button } from "@/components/ui/button";
+import { hasAdminAccess } from "@/lib/admin";
 import { Lock, Shield, MapPin, MessageSquare, Users, BarChart3, Flag } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -22,7 +23,7 @@ const permissionCategories = [
 
 function PermissionsPage() {
   const { isLoggedIn, user } = useAuth();
-  const canAccessAdmin = user?.roleId === 1 || user?.roleId === 2;
+  const canAccessAdmin = hasAdminAccess(user);
 
   if (!isLoggedIn || !canAccessAdmin) {
     return (
@@ -40,7 +41,7 @@ function PermissionsPage() {
     <>
       <FloatingRightNav />
       <div className="pr-20">
-        <AdminSectionShell title="Role Permissions" subtitle="Configure granular permissions for each role.">
+        <AdminSectionShell title="Role Permissions" subtitle="Preview the permissions model planned for a future release.">
           <div className="space-y-6">
             {/* Coming Soon Banner */}
             <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center">

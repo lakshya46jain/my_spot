@@ -9,6 +9,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { hasAdminAccess } from "@/lib/admin";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -23,7 +24,7 @@ const baseNavItems = [
 export function FloatingRightNav() {
   const location = useLocation();
   const { isLoggedIn, isGuest, logout, user } = useAuth();
-  const canAccessAdmin = user?.roleId === 1 || user?.roleId === 2;
+  const canAccessAdmin = hasAdminAccess(user);
 
   // Filter nav items based on role
   const navItems = baseNavItems.filter((item) => {

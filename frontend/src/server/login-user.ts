@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import bcrypt from "bcryptjs";
-import type { RowDataPacket } from "mysql2";
+import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { z } from "zod";
 import { db } from "./db";
 
@@ -38,6 +38,7 @@ export const loginUser = createServerFn({ method: "POST" })
       INNER JOIN roles r ON u.role_id = r.role_id
       WHERE u.email = ?
         AND u.is_active = 1
+        AND u.deleted_at IS NULL
       LIMIT 1
       `,
       [normalizedEmail],
@@ -57,6 +58,15 @@ export const loginUser = createServerFn({ method: "POST" })
     if (!passwordMatches) {
       throw new Error("Invalid email or password.");
     }
+
+    await db.execute<ResultSetHeader>(
+      `
+      UPDATE users
+      SET last_login = CURRENT_TIMESTAMP
+      WHERE user_id = ?
+      `,
+      [user.user_id],
+    );
 
     return {
       success: true,

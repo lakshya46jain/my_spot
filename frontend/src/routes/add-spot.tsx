@@ -4,6 +4,7 @@ import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { SectionCard } from "@/components/SectionCard";
 import { importGoogleMapsLibrary } from "@/lib/google-maps";
 import { getGoogleMapsEmbedUrl } from "@/lib/google-maps-urls";
+import { SPOT_TYPES } from "@/lib/spot-types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileUpload } from "@/components/FileUpload";
@@ -17,12 +18,6 @@ import {
   ChevronUp,
   CheckCircle2,
   AlertCircle,
-  Coffee,
-  BookOpen,
-  Trees,
-  UtensilsCrossed,
-  Building2,
-  MoreHorizontal,
   Loader2,
   X,
 } from "lucide-react";
@@ -49,15 +44,6 @@ export interface CreateSpotData {
 export const Route = createFileRoute("/add-spot")({
   component: AddSpotPage,
 });
-
-const SPOT_TYPES = [
-  { value: "cafe", label: "Café", icon: Coffee },
-  { value: "library", label: "Library", icon: BookOpen },
-  { value: "park", label: "Park", icon: Trees },
-  { value: "restaurant", label: "Restaurant", icon: UtensilsCrossed },
-  { value: "office", label: "Office", icon: Building2 },
-  { value: "other", label: "Other", icon: MoreHorizontal },
-] as const;
 
 type LocationSuggestion = {
   placePrediction: {
@@ -436,7 +422,7 @@ function AddSpotPage() {
         data: {
           userId: user.userId,
           ...formData,
-          operatingHours: operatingHours as any,
+          operatingHours,
         },
       });
 
