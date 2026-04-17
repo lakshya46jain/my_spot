@@ -1,5 +1,5 @@
-CREATE SCHEMA IF NOT EXISTS myspot;
-USE myspot;
+CREATE SCHEMA IF NOT EXISTS railway;
+USE railway;
 
 CREATE TABLE roles (
     role_id INT NOT NULL AUTO_INCREMENT,
