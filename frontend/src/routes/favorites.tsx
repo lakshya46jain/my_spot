@@ -207,6 +207,7 @@ function FavoritesPage() {
                   key={spot.spot_id}
                   spot={spot}
                   isLoggedIn={isLoggedIn}
+                  showAddress={isLoggedIn}
                   isOwner={user?.userId === spot.user_id}
                   favoritePending={favoritePendingIds.includes(spot.spot_id)}
                   onViewDetails={handleViewDetails}

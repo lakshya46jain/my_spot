@@ -343,6 +343,35 @@ function SpotDetailsPage() {
     );
   }
 
+  if (!isLoggedIn) {
+    return (
+      <PageContainer className="pr-0">
+        <div className="text-center py-16">
+          <div className="rounded-2xl border border-border bg-card p-8 max-w-md mx-auto shadow-sm">
+            <MapPin className="h-12 w-12 text-warm-300 mx-auto mb-4" />
+            <h2 className="text-xl font-display text-foreground mb-2">
+              Sign in to view this spot
+            </h2>
+            <p className="text-sm text-muted-foreground mb-6">
+              Sign in to view full spot details, including the location address.
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button asChild variant="outline" className="gap-2">
+                <Link to={backTarget}>
+                  <ArrowLeft className="h-4 w-4" />
+                  {backLabel}
+                </Link>
+              </Button>
+              <Button asChild>
+                <Link to="/signin">Sign In</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </PageContainer>
+    );
+  }
+
   if (error || !spot) {
     return (
       <PageContainer className="pr-0">

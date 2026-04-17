@@ -388,6 +388,11 @@ function ExplorePage() {
   const navigate = useNavigate();
 
   const handleViewDetails = (spotId: number) => {
+    if (!isLoggedIn) {
+      navigate({ to: "/signin" });
+      return;
+    }
+
     navigate({
       to: "/spot/$spotId",
       params: { spotId: String(spotId) },
@@ -731,12 +736,14 @@ function ExplorePage() {
                   Clear Filters
                 </Button>
               ) : (
-                <Button asChild className="gap-2">
-                  <Link to="/add-spot">
-                    <Plus className="h-4 w-4" />
-                    Add a Spot
-                  </Link>
-                </Button>
+                isLoggedIn ? (
+                  <Button asChild className="gap-2">
+                    <Link to="/add-spot">
+                      <Plus className="h-4 w-4" />
+                      Add a Spot
+                    </Link>
+                  </Button>
+                ) : null
               )}
             </div>
           </div>
@@ -748,6 +755,7 @@ function ExplorePage() {
                   key={spot.spot_id}
                   spot={spot}
                   isLoggedIn={isLoggedIn}
+                  showAddress={isLoggedIn}
                   isOwner={user?.userId === spot.user_id}
                   favoritePending={favoritePendingIds.includes(spot.spot_id)}
                   onDelete={(spotId) => {

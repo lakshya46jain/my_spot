@@ -39,6 +39,7 @@ interface SpotCardProps {
   spot: Spot;
   isOwner?: boolean;
   isLoggedIn?: boolean;
+  showAddress?: boolean;
   favoritePending?: boolean;
   onDelete?: (spotId: number) => void;
   onEdit?: (spotId: number) => void;
@@ -50,6 +51,7 @@ export function SpotCard({
   spot,
   isOwner = false,
   isLoggedIn = false,
+  showAddress = true,
   favoritePending = false,
   onDelete,
   onEdit,
@@ -122,7 +124,7 @@ export function SpotCard({
         </h3>
 
         {/* Location */}
-        {spot.address && (
+        {showAddress && spot.address && (
           <div className="flex items-center gap-1.5 mb-2">
             <MapPin className="h-3 w-3 text-warm-400 shrink-0" />
             <p className="text-xs text-muted-foreground truncate">
