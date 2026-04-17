@@ -54,6 +54,22 @@ Paste the following into `.env.local`:
 MYSQL_PUBLIC_URL=your_railway_mysql_public_url_here
 ```
 
+For Firebase Storage uploads, also add:
+
+```env
+FIREBASE_PROJECT_ID=myspot-492800
+FIREBASE_CLIENT_EMAIL=your_firebase_service_account_email
+FIREBASE_PRIVATE_KEY=your_firebase_private_key
+FIREBASE_STORAGE_BUCKET=myspot-492800.firebasestorage.app
+```
+
+Use the exact same variable names in Vercel Project Settings -> Environment Variables.
+
+Important:
+- `FIREBASE_CLIENT_EMAIL` and `FIREBASE_PRIVATE_KEY` are secrets and should never be committed.
+- In Vercel, paste the private key as a single value. If needed, keep newline characters as literal `\n`.
+- The Firebase web app config you shared is not treated as a secret by Firebase, but this implementation does not need those public variables because uploads are handled securely on the server.
+
 Example format:
 
 ```env

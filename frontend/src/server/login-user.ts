@@ -15,6 +15,7 @@ type UserRow = RowDataPacket & {
   user_id: number;
   display_name: string;
   email: string;
+  avatar_url: string | null;
   password_hash: string;
   role_id: number;
   role_name: string;
@@ -31,6 +32,7 @@ export const loginUser = createServerFn({ method: "POST" })
         u.user_id,
         u.display_name,
         u.email,
+        u.avatar_url,
         u.password_hash,
         u.role_id,
         r.role_name
@@ -74,6 +76,7 @@ export const loginUser = createServerFn({ method: "POST" })
         userId: user.user_id,
         displayName: user.display_name,
         email: user.email,
+        avatarUrl: user.avatar_url,
         roleId: user.role_id,
         roleName: user.role_name,
       },

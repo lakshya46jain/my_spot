@@ -53,6 +53,15 @@ function formatRoleName(roleName: string) {
     .join(" ");
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function UsersPage() {
   const { isLoggedIn, user } = useAuth();
   const canAccessAdmin = hasAdminAccess(user);
@@ -383,8 +392,12 @@ function UsersPage() {
                           <td className="p-3"><Checkbox checked={selected.has(userRow.user_id)} onCheckedChange={() => toggleSelect(userRow.user_id)} /></td>
                           <td className="p-3">
                             <div className="flex items-center gap-3">
-                              <div className="h-8 w-8 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700">
-                                {userRow.display_name.split(" ").map((namePart) => namePart[0]).join("")}
+                              <div className="h-8 w-8 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700 overflow-hidden">
+                                {userRow.avatar_url ? (
+                                  <img src={userRow.avatar_url} alt={userRow.display_name} className="h-full w-full object-cover" />
+                                ) : (
+                                  getInitials(userRow.display_name)
+                                )}
                               </div>
                               <p className="font-medium text-foreground">{userRow.display_name}</p>
                             </div>
@@ -446,8 +459,12 @@ function UsersPage() {
           {detailUser && (
             <div className="mt-6 space-y-5">
               <div className="flex items-center gap-4">
-                <div className="h-16 w-16 rounded-full bg-warm-200 flex items-center justify-center text-2xl font-semibold text-warm-700">
-                  {detailUser.display_name.split(" ").map((namePart) => namePart[0]).join("")}
+                <div className="h-16 w-16 rounded-full bg-warm-200 flex items-center justify-center text-2xl font-semibold text-warm-700 overflow-hidden">
+                  {detailUser.avatar_url ? (
+                    <img src={detailUser.avatar_url} alt={detailUser.display_name} className="h-full w-full object-cover" />
+                  ) : (
+                    getInitials(detailUser.display_name)
+                  )}
                 </div>
                 <div>
                   <p className="text-lg font-medium text-foreground">{detailUser.display_name}</p>

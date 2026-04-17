@@ -4,8 +4,10 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   type ReactNode,
 } from "react";
+import { touchSessionActivity } from "@/server/session-activity";
 
 export type UserRole = "guest" | "authenticated";
 
@@ -13,6 +15,7 @@ export interface AuthUser {
   userId: number;
   displayName: string;
   email: string;
+  avatarUrl?: string | null;
   roleId: number;
   roleName: string;
 }
@@ -34,6 +37,7 @@ interface AuthContextType extends AuthState {
 }
 
 const AUTH_STORAGE_KEY = "myspot-auth";
+const SESSION_ACTIVITY_INTERVAL_MS = 5 * 60 * 1000;
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -93,6 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRole] = useState<UserRole | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
+  const lastTouchRef = useRef(0);
 
   useEffect(() => {
     const stored = safeReadAuthStorage();
@@ -100,6 +105,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(stored.user);
     setIsHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!isHydrated || role !== "authenticated" || !user) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const touch = async (force = false) => {
+      const now = Date.now();
+
+      if (
+        !force &&
+        now - lastTouchRef.current < SESSION_ACTIVITY_INTERVAL_MS - 15_000
+      ) {
+        return;
+      }
+
+      lastTouchRef.current = now;
+
+      try {
+        await touchSessionActivity({
+          data: {
+            userId: user.userId,
+          },
+        });
+      } catch {
+        if (cancelled) {
+          return;
+        }
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void touch();
+      }
+    };
+
+    const handleWindowFocus = () => {
+      void touch();
+    };
+
+    void touch(true);
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void touch(true);
+      }
+    }, SESSION_ACTIVITY_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [isHydrated, role, user]);
 
   const loginAsGuest = useCallback(() => {
     setRole("guest");

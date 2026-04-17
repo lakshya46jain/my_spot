@@ -43,6 +43,15 @@ function formatDateTime(value: string) {
   });
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function ReportedReviewsPage() {
   const { isLoggedIn, user } = useAuth();
   const canAccessAdmin = hasAdminAccess(user);
@@ -233,8 +242,12 @@ function ReportedReviewsPage() {
                   <div key={review.review_id} className="rounded-2xl bg-card border border-border p-5 shadow-sm">
                     <div className="flex items-start gap-4">
                       <Checkbox checked={selected.has(review.review_id)} onCheckedChange={() => toggleSelect(review.review_id)} className="mt-1" />
-                      <div className="h-10 w-10 rounded-full bg-warm-200 flex items-center justify-center text-sm font-semibold text-warm-700 shrink-0">
-                        {review.reviewer.split(" ").map((namePart) => namePart[0]).join("")}
+                      <div className="h-10 w-10 rounded-full bg-warm-200 flex items-center justify-center text-sm font-semibold text-warm-700 shrink-0 overflow-hidden">
+                        {review.reviewer_avatar_url ? (
+                          <img src={review.reviewer_avatar_url} alt={review.reviewer} className="h-full w-full object-cover" />
+                        ) : (
+                          getInitials(review.reviewer)
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -284,8 +297,12 @@ function ReportedReviewsPage() {
           {detailReview && (
             <div className="mt-6 space-y-5">
               <div className="flex items-center gap-3">
-                <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700">
-                  {detailReview.reviewer.split(" ").map((namePart) => namePart[0]).join("")}
+                <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700 overflow-hidden">
+                  {detailReview.reviewer_avatar_url ? (
+                    <img src={detailReview.reviewer_avatar_url} alt={detailReview.reviewer} className="h-full w-full object-cover" />
+                  ) : (
+                    getInitials(detailReview.reviewer)
+                  )}
                 </div>
                 <div>
                   <p className="font-medium text-foreground">{detailReview.reviewer}</p>

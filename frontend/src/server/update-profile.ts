@@ -16,6 +16,7 @@ type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 
 type ExistingUserRow = RowDataPacket & {
   user_id: number;
+  avatar_url?: string | null;
 };
 
 export const updateProfile = createServerFn({ method: "POST" })
@@ -42,6 +43,20 @@ export const updateProfile = createServerFn({ method: "POST" })
       throw new Error("Another account is already using this email.");
     }
 
+    const [currentUsers] = await db.execute<ExistingUserRow[]>(
+      `
+      SELECT user_id, avatar_url
+      FROM users
+      WHERE user_id = ?
+      LIMIT 1
+      `,
+      [data.userId],
+    );
+
+    if (currentUsers.length === 0) {
+      throw new Error("User not found.");
+    }
+
     await db.execute<ResultSetHeader>(
       `
       UPDATE users
@@ -57,6 +72,7 @@ export const updateProfile = createServerFn({ method: "POST" })
         userId: data.userId,
         displayName: fullName,
         email: normalizedEmail,
+        avatarUrl: currentUsers[0].avatar_url ?? null,
       },
       message: "Profile updated successfully.",
     };

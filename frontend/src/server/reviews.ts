@@ -49,6 +49,7 @@ type ReviewRow = RowDataPacket & {
   review: string | null;
   created_at: string;
   reviewer_name: string;
+  reviewer_avatar_url: string | null;
 };
 
 function normalizeReview(row: ReviewRow) {
@@ -78,7 +79,8 @@ export const getSpotReviews = createServerFn({ method: "GET" })
         r.rating,
         r.review,
         r.created_at,
-        u.display_name AS reviewer_name
+        u.display_name AS reviewer_name,
+        u.avatar_url AS reviewer_avatar_url
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.spot_id = ?
@@ -148,7 +150,8 @@ export const createReview = createServerFn({ method: "POST" })
         r.rating,
         r.review,
         r.created_at,
-        u.display_name AS reviewer_name
+        u.display_name AS reviewer_name,
+        u.avatar_url AS reviewer_avatar_url
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.review_id = ?
@@ -211,7 +214,8 @@ export const updateReview = createServerFn({ method: "POST" })
         r.rating,
         r.review,
         r.created_at,
-        u.display_name AS reviewer_name
+        u.display_name AS reviewer_name,
+        u.avatar_url AS reviewer_avatar_url
       FROM reviews r
       INNER JOIN users u ON r.user_id = u.user_id
       WHERE r.review_id = ?

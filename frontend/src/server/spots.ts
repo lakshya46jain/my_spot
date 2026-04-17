@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { z } from "zod";
 import { db } from "./db";
+import { deleteFilesFromFirebaseStorage } from "./firebase-admin";
 
 const spotStatusSchema = z.enum(["active", "inactive", "pending"]);
 const meridiemSchema = z.enum(["AM", "PM"]);
@@ -66,6 +67,13 @@ const deleteSpotSchema = z.object({
 
 type DeleteSpotInput = z.infer<typeof deleteSpotSchema>;
 
+const deleteSpotMediaSchema = z.object({
+  spotId: z.number().int().positive(),
+  mediaId: z.number().int().positive(),
+});
+
+type DeleteSpotMediaInput = z.infer<typeof deleteSpotMediaSchema>;
+
 const getSpotSchema = z.object({
   spotId: z.number().int().positive(),
 });
@@ -94,9 +102,12 @@ type SpotRow = RowDataPacket & {
   created_at: string;
   last_modified: string | null;
   creator_name: string;
+  creator_avatar_url: string | null;
   user_id: number;
   average_rating: number | string | null;
   review_count: number;
+  primary_media_url: string | null;
+  media_count: number;
   distance_miles?: number | null;
   is_favorited?: 0 | 1 | boolean | null;
 };
@@ -119,6 +130,19 @@ type SpotHoursPayload = {
   open_time: string | null;
   close_time: string | null;
   notes: string | null;
+};
+
+type SpotMediaRow = RowDataPacket & {
+  media_id: number;
+  media_url: string;
+  storage_path: string;
+  file_name: string;
+  mime_type: string;
+  file_size_bytes: number;
+  width: number | null;
+  height: number | null;
+  sort_order: number;
+  is_primary: 0 | 1 | boolean;
 };
 
 function toMySqlTime(
@@ -267,7 +291,20 @@ function normalizeSpot(row: SpotRow) {
       row.distance_miles === undefined || row.distance_miles === null
         ? row.distance_miles
         : Number(row.distance_miles),
+    media_count: Number(row.media_count ?? 0),
     is_favorited: Boolean(row.is_favorited),
+  };
+}
+
+function normalizeSpotMedia(row: SpotMediaRow) {
+  return {
+    ...row,
+    media_id: Number(row.media_id),
+    file_size_bytes: Number(row.file_size_bytes),
+    width: row.width === null ? null : Number(row.width),
+    height: row.height === null ? null : Number(row.height),
+    sort_order: Number(row.sort_order),
+    is_primary: Boolean(row.is_primary),
   };
 }
 
@@ -287,8 +324,23 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
       s.last_modified,
       s.user_id,
       u.display_name AS creator_name,
+      u.avatar_url AS creator_avatar_url,
       AVG(r.rating) AS average_rating,
-      COUNT(r.review_id) AS review_count
+      COUNT(r.review_id) AS review_count,
+      (
+        SELECT sm.media_url
+        FROM spot_media sm
+        WHERE sm.spot_id = s.spot_id
+          AND sm.deleted_at IS NULL
+        ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+        LIMIT 1
+      ) AS primary_media_url,
+      (
+        SELECT COUNT(*)
+        FROM spot_media sm
+        WHERE sm.spot_id = s.spot_id
+          AND sm.deleted_at IS NULL
+      ) AS media_count
     FROM spots s
     JOIN users u ON s.user_id = u.user_id
     LEFT JOIN reviews r ON s.spot_id = r.spot_id
@@ -306,7 +358,8 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
       s.created_at,
       s.last_modified,
       s.user_id,
-      u.display_name
+      u.display_name,
+      u.avatar_url
     ORDER BY s.created_at DESC
     `,
   );
@@ -365,8 +418,23 @@ export const searchSpots = createServerFn({ method: "POST" })
         s.last_modified,
         s.user_id,
         u.display_name AS creator_name,
+        u.avatar_url AS creator_avatar_url,
         AVG(r.rating) AS average_rating,
         COUNT(r.review_id) AS review_count,
+        (
+          SELECT sm.media_url
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+          ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+          LIMIT 1
+        ) AS primary_media_url,
+        (
+          SELECT COUNT(*)
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+        ) AS media_count,
         ${data.viewerUserId ? "MAX(CASE WHEN f.user_id IS NULL THEN 0 ELSE 1 END)" : "0"} AS is_favorited,
         ${distanceSql} AS distance_miles
       FROM spots s
@@ -409,7 +477,8 @@ export const searchSpots = createServerFn({ method: "POST" })
           s.created_at,
           s.last_modified,
           s.user_id,
-          u.display_name
+          u.display_name,
+          u.avatar_url
         HAVING distance_miles <= ?
       `;
       params.push(data.radiusMiles);
@@ -430,7 +499,8 @@ export const searchSpots = createServerFn({ method: "POST" })
           s.created_at,
           s.last_modified,
           s.user_id,
-          u.display_name
+          u.display_name,
+          u.avatar_url
         ORDER BY s.created_at DESC
       `;
     }
@@ -457,8 +527,23 @@ export const getSpot = createServerFn({ method: "GET" })
         s.last_modified,
         s.user_id,
         u.display_name AS creator_name,
+        u.avatar_url AS creator_avatar_url,
         AVG(r.rating) AS average_rating,
-        COUNT(r.review_id) AS review_count
+        COUNT(r.review_id) AS review_count,
+        (
+          SELECT sm.media_url
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+          ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+          LIMIT 1
+        ) AS primary_media_url,
+        (
+          SELECT COUNT(*)
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+        ) AS media_count
       FROM spots s
       JOIN users u ON s.user_id = u.user_id
       LEFT JOIN reviews r ON s.spot_id = r.spot_id
@@ -476,7 +561,8 @@ export const getSpot = createServerFn({ method: "GET" })
         s.created_at,
         s.last_modified,
         s.user_id,
-        u.display_name
+        u.display_name,
+        u.avatar_url
       LIMIT 1
       `,
       [data.spotId],
@@ -515,9 +601,113 @@ export const getSpot = createServerFn({ method: "GET" })
       [data.spotId],
     );
 
+    const [mediaRows] = await db.execute<SpotMediaRow[]>(
+      `
+      SELECT
+        media_id,
+        media_url,
+        storage_path,
+        file_name,
+        mime_type,
+        file_size_bytes,
+        width,
+        height,
+        sort_order,
+        is_primary
+      FROM spot_media
+      WHERE spot_id = ?
+        AND deleted_at IS NULL
+      ORDER BY is_primary DESC, sort_order ASC, media_id ASC
+      `,
+      [data.spotId],
+    );
+
     return {
       ...normalizeSpot(rows[0]),
       operating_hours: normalizeSpotHours(hoursRows),
+      media: mediaRows.map(normalizeSpotMedia),
+    };
+  });
+
+export const deleteSpotMedia = createServerFn({ method: "POST" })
+  .inputValidator((input: DeleteSpotMediaInput) =>
+    deleteSpotMediaSchema.parse(input),
+  )
+  .handler(async ({ data }) => {
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [existingRows] = await connection.execute<
+        Array<RowDataPacket & { media_id: number; is_primary: 0 | 1 }>
+      >(
+        `
+        SELECT media_id, is_primary
+        FROM spot_media
+        WHERE media_id = ?
+          AND spot_id = ?
+          AND deleted_at IS NULL
+        LIMIT 1
+        `,
+        [data.mediaId, data.spotId],
+      );
+
+      if (existingRows.length === 0) {
+        throw new Error("Photo not found for this spot.");
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `
+        UPDATE spot_media
+        SET
+          deleted_at = CURRENT_TIMESTAMP,
+          is_primary = 0
+        WHERE media_id = ?
+          AND spot_id = ?
+        `,
+        [data.mediaId, data.spotId],
+      );
+
+      if (existingRows[0].is_primary === 1) {
+        const [nextRows] = await connection.execute<
+          Array<RowDataPacket & { media_id: number }>
+        >(
+          `
+          SELECT media_id
+          FROM spot_media
+          WHERE spot_id = ?
+            AND deleted_at IS NULL
+          ORDER BY sort_order ASC, media_id ASC
+          LIMIT 1
+          `,
+          [data.spotId],
+        );
+
+        if (nextRows.length > 0) {
+          await connection.execute<ResultSetHeader>(
+            `
+            UPDATE spot_media
+            SET is_primary = CASE WHEN media_id = ? THEN 1 ELSE 0 END
+            WHERE spot_id = ?
+              AND deleted_at IS NULL
+            `,
+            [nextRows[0].media_id, data.spotId],
+          );
+        }
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+
+    return {
+      success: true,
+      message: "Photo removed successfully.",
     };
   });
 
@@ -713,6 +903,7 @@ export const deleteSpot = createServerFn({ method: "POST" })
   .inputValidator((input: DeleteSpotInput) => deleteSpotSchema.parse(input))
   .handler(async ({ data }) => {
     const connection = await db.getConnection();
+    let mediaPathsToDelete: string[] = [];
 
     try {
       await connection.beginTransaction();
@@ -725,6 +916,21 @@ export const deleteSpot = createServerFn({ method: "POST" })
       if (existing.length === 0) {
         throw new Error("Spot not found.");
       }
+
+      const [mediaRows] = await connection.execute<
+        Array<RowDataPacket & { storage_path: string | null }>
+      >(
+        `
+        SELECT storage_path
+        FROM spot_media
+        WHERE spot_id = ?
+        `,
+        [data.spotId],
+      );
+
+      mediaPathsToDelete = mediaRows
+        .map((row) => row.storage_path)
+        .filter((path): path is string => Boolean(path));
 
       await connection.execute(`DELETE FROM content_report WHERE spot_id = ?`, [
         data.spotId,
@@ -766,6 +972,8 @@ export const deleteSpot = createServerFn({ method: "POST" })
       ]);
 
       await connection.commit();
+
+      await deleteFilesFromFirebaseStorage(mediaPathsToDelete);
 
       return {
         success: true,

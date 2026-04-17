@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { AdminSectionShell } from "@/components/admin/AdminSectionShell";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { GoogleAddressField } from "@/components/GoogleAddressField";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { SearchFilterBar } from "@/components/admin/SearchFilterBar";
@@ -30,8 +31,9 @@ import {
   moderateAdminSpotReports,
   updateAdminSpotStatuses,
 } from "@/server/admin";
-import { updateSpot } from "@/server/spots";
+import { deleteSpotMedia, getSpot, updateSpot } from "@/server/spots";
 import type { AdminReportedSpotRow } from "@/types/admin";
+import type { SpotMedia } from "@/types/api";
 
 export const Route = createFileRoute("/admin/reported-spots")({
   component: ReportedSpotsPage,
@@ -55,6 +57,15 @@ function formatDateTime(value: string) {
   });
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function ReportedSpotsPage() {
   const { isLoggedIn, user } = useAuth();
   const canAccessAdmin = hasAdminAccess(user);
@@ -68,6 +79,9 @@ function ReportedSpotsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [detailReport, setDetailReport] = useState<AdminReportedSpotRow | null>(null);
   const [editingSpot, setEditingSpot] = useState<AdminReportedSpotRow | null>(null);
+  const [detailSpotMedia, setDetailSpotMedia] = useState<SpotMedia[]>([]);
+  const [mediaDeleteTarget, setMediaDeleteTarget] = useState<SpotMedia | null>(null);
+  const [deletingMedia, setDeletingMedia] = useState(false);
   const [editForm, setEditForm] = useState({
     spot_name: "",
     spot_type: "",
@@ -256,6 +270,46 @@ function ReportedSpotsPage() {
     }
   };
 
+  const handleOpenDetailReport = async (report: AdminReportedSpotRow) => {
+    setDetailReport(report);
+    try {
+      const result = await getSpot({ data: { spotId: report.spot_id } });
+      setDetailSpotMedia(result.media ?? []);
+    } catch {
+      setDetailSpotMedia([]);
+    }
+  };
+
+  const handleDeleteMedia = async () => {
+    if (!detailReport || !mediaDeleteTarget?.media_id) {
+      return;
+    }
+
+    try {
+      setDeletingMedia(true);
+      setPageError("");
+      setActionMessage("");
+      await deleteSpotMedia({
+        data: {
+          spotId: detailReport.spot_id,
+          mediaId: mediaDeleteTarget.media_id,
+        },
+      });
+      setDetailSpotMedia((current) =>
+        current.filter((media) => media.media_id !== mediaDeleteTarget.media_id),
+      );
+      setActionMessage("Photo removed successfully.");
+      await loadReportedSpots();
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not delete the selected photo."),
+      );
+    } finally {
+      setDeletingMedia(false);
+      setMediaDeleteTarget(null);
+    }
+  };
+
   return (
     <>
       <FloatingRightNav />
@@ -324,23 +378,32 @@ function ReportedSpotsPage() {
                       <tr key={report.spot_id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
                         <td className="p-3"><Checkbox checked={selected.has(report.spot_id)} onCheckedChange={() => toggleSelect(report.spot_id)} /></td>
                         <td className="p-3">
-                          <p className="font-medium text-foreground">{report.spot_name}</p>
-                          {report.address ? (
-                            <a
-                              href={
-                                report.latitude !== null && report.longitude !== null
-                                  ? getGoogleMapsSearchUrl(report.latitude, report.longitude)
-                                  : getGoogleMapsAddressSearchUrl(report.address)
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-xs text-primary hover:underline"
-                            >
-                              {report.address}
-                            </a>
-                          ) : (
-                            <p className="text-xs text-muted-foreground">No address</p>
-                          )}
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-warm-100 overflow-hidden flex items-center justify-center shrink-0">
+                              {report.primary_media_url ? (
+                                <img src={report.primary_media_url} alt={report.spot_name} className="h-full w-full object-cover" />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{report.spot_name}</p>
+                              {report.address ? (
+                                <a
+                                  href={
+                                    report.latitude !== null && report.longitude !== null
+                                      ? getGoogleMapsSearchUrl(report.latitude, report.longitude)
+                                      : getGoogleMapsAddressSearchUrl(report.address)
+                                  }
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-xs text-primary hover:underline"
+                                >
+                                  {report.address}
+                                </a>
+                              ) : (
+                                <p className="text-xs text-muted-foreground">No address</p>
+                              )}
+                            </div>
+                          </div>
                         </td>
                         <td className="p-3 text-muted-foreground hidden md:table-cell">{getSpotTypeLabel(report.spot_type)}</td>
                         <td className="p-3 hidden lg:table-cell">
@@ -357,7 +420,7 @@ function ReportedSpotsPage() {
                         <td className="p-3 hidden lg:table-cell"><StatusBadge status={report.spot_status} /></td>
                         <td className="p-3">
                           <div className="flex items-center justify-end gap-1">
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg" title="View Details" onClick={() => setDetailReport(report)}>
+                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg" title="View Details" onClick={() => void handleOpenDetailReport(report)}>
                               <Eye className="h-3.5 w-3.5" />
                             </Button>
                           </div>
@@ -399,6 +462,19 @@ function ReportedSpotsPage() {
                   <p className="text-xs text-muted-foreground">No address</p>
                 )}
               </div>
+              <div>
+                <p className="text-sm text-muted-foreground">Submitted By</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-warm-200 overflow-hidden flex items-center justify-center text-xs font-semibold text-warm-700">
+                    {detailReport.submitted_by_avatar_url ? (
+                      <img src={detailReport.submitted_by_avatar_url} alt={detailReport.submitted_by} className="h-full w-full object-cover" />
+                    ) : (
+                      getInitials(detailReport.submitted_by)
+                    )}
+                  </div>
+                  <p className="text-sm font-medium text-foreground">{detailReport.submitted_by}</p>
+                </div>
+              </div>
               <div className="flex gap-3">
                 <div>
                   <p className="text-sm text-muted-foreground">Report Status</p>
@@ -416,6 +492,35 @@ function ReportedSpotsPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Latest Reason</p>
                 <p className="text-foreground">{detailReport.latest_reason}</p>
+              </div>
+              <div>
+                <p className="text-sm text-muted-foreground mb-2">Photos</p>
+                {detailSpotMedia.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {detailSpotMedia.map((media) => (
+                      <div key={media.media_id ?? media.storage_path} className="overflow-hidden rounded-xl border border-border bg-muted/20">
+                        <img src={media.media_url} alt={media.file_name} className="h-28 w-full object-cover" />
+                        <div className="flex items-center justify-between gap-2 p-2">
+                          <span className="truncate text-xs text-muted-foreground">
+                            {media.is_primary ? "Primary photo" : media.file_name}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 rounded-lg px-2 text-xs"
+                            onClick={() => setMediaDeleteTarget(media)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    No photos uploaded for this spot.
+                  </div>
+                )}
               </div>
               <div>
                 <p className="text-sm text-muted-foreground mb-2">Reports On This Spot</p>
@@ -520,6 +625,21 @@ function ReportedSpotsPage() {
           )}
         </SheetContent>
       </Sheet>
+      <ConfirmationModal
+        open={mediaDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingMedia) {
+            setMediaDeleteTarget(null);
+          }
+        }}
+        title="Remove Photo"
+        description="This will hide this photo from the reported spot, but keep the record and Firebase file for future access."
+        confirmLabel={deletingMedia ? "Removing..." : "Remove Photo"}
+        onConfirm={() => {
+          void handleDeleteMedia();
+        }}
+        destructive
+      />
 
       <Sheet open={!!editingSpot} onOpenChange={(open) => !open && setEditingSpot(null)}>
         <SheetContent className="sm:max-w-lg overflow-y-auto">

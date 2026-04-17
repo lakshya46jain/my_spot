@@ -26,6 +26,15 @@ export const Route = createFileRoute("/admin")({
   component: AdminPage,
 });
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function AdminPage() {
   const location = useLocation();
   const { isLoggedIn, user } = useAuth();
@@ -205,8 +214,12 @@ function AdminPage() {
                   <div className="grid grid-cols-1 gap-4">
                     {activeAdminsPreview.map((admin) => (
                       <div key={admin.id} className="rounded-2xl bg-card border border-border p-5 shadow-sm flex items-center gap-4">
-                        <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700">
-                          {admin.name.split(" ").map((namePart) => namePart[0]).join("")}
+                        <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700 overflow-hidden">
+                          {admin.avatar_url ? (
+                            <img src={admin.avatar_url} alt={admin.name} className="h-full w-full object-cover" />
+                          ) : (
+                            getInitials(admin.name)
+                          )}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-foreground truncate">{admin.name}</p>
@@ -321,8 +334,12 @@ function AdminPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                       {dashboardData.activeAdmins.map((admin) => (
                         <div key={admin.id} className="rounded-2xl bg-card border border-border p-5 shadow-sm flex items-center gap-4">
-                          <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700">
-                            {admin.name.split(" ").map((namePart) => namePart[0]).join("")}
+                          <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-lg font-semibold text-warm-700 overflow-hidden">
+                            {admin.avatar_url ? (
+                              <img src={admin.avatar_url} alt={admin.name} className="h-full w-full object-cover" />
+                            ) : (
+                              getInitials(admin.name)
+                            )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <p className="font-medium text-foreground truncate">{admin.name}</p>

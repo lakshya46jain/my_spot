@@ -133,12 +133,14 @@ type ActiveAdminRow = RowDataPacket & {
   role: string;
   last_login: string | null;
   created_at: string;
+  avatar_url: string | null;
 };
 
 type AdminUserDbRow = RowDataPacket & {
   user_id: number;
   display_name: string;
   email: string;
+  avatar_url: string | null;
   role_id: number;
   role_name: string;
   created_at: string;
@@ -159,12 +161,14 @@ type AdminSpotDbRow = RowDataPacket & {
   spot_id: number;
   spot_name: string;
   spot_type: string;
+  primary_media_url: string | null;
   address: string | null;
   latitude: number | string | null;
   longitude: number | string | null;
   short_description: string | null;
   created_at: string;
   created_by: string;
+  created_by_avatar_url: string | null;
   status: "active" | "inactive" | "pending";
 };
 
@@ -173,11 +177,13 @@ type AdminReportedSpotDbRow = RowDataPacket & {
   report_id: number;
   spot_name: string;
   spot_type: string;
+  primary_media_url: string | null;
   address: string | null;
   latitude: number | string | null;
   longitude: number | string | null;
   short_description: string | null;
   submitted_by: string;
+  submitted_by_avatar_url: string | null;
   report_count: number | string;
   open_report_count: number | string;
   latest_reason: string;
@@ -190,6 +196,7 @@ type AdminReportedReviewDbRow = RowDataPacket & {
   review_id: number;
   report_id: number;
   reviewer: string;
+  reviewer_avatar_url: string | null;
   spot_id: number;
   spot_name: string;
   rating: number | string;
@@ -456,7 +463,8 @@ async function loadDashboardData(): Promise<AdminDashboardData> {
       u.display_name AS name,
       r.role_name AS role,
       u.last_login,
-      u.created_at
+      u.created_at,
+      u.avatar_url
     FROM users u
     INNER JOIN roles r ON u.role_id = r.role_id
     WHERE u.is_active = 1
@@ -543,6 +551,7 @@ async function loadDashboardData(): Promise<AdminDashboardData> {
     id: row.id,
     name: row.name,
     role: row.role,
+    avatar_url: row.avatar_url,
     lastActive: formatRelativeTime(
       row.last_login,
       `Joined ${new Date(row.created_at).toLocaleDateString("en-US", {
@@ -588,6 +597,7 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(
         u.user_id,
         u.display_name,
         u.email,
+        u.avatar_url,
         u.role_id,
         r.role_name,
         u.created_at,
@@ -606,6 +616,7 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(
         u.user_id,
         u.display_name,
         u.email,
+        u.avatar_url,
         u.role_id,
         r.role_name,
         u.created_at,
@@ -620,6 +631,7 @@ export const getAdminUsers = createServerFn({ method: "GET" }).handler(
       user_id: row.user_id,
       display_name: row.display_name,
       email: row.email,
+      avatar_url: row.avatar_url,
       role_id: row.role_id,
       role_name: row.role_name,
       created_at: row.created_at,
@@ -886,12 +898,21 @@ export const getAdminSpots = createServerFn({ method: "GET" }).handler(
         s.spot_id,
         s.spot_name,
         s.spot_type,
+        (
+          SELECT sm.media_url
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+          ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+          LIMIT 1
+        ) AS primary_media_url,
         s.address,
         s.latitude,
         s.longitude,
         s.short_description,
         s.created_at,
         u.display_name AS created_by,
+        u.avatar_url AS created_by_avatar_url,
         s.status
       FROM spots s
       INNER JOIN users u ON s.user_id = u.user_id
@@ -903,12 +924,14 @@ export const getAdminSpots = createServerFn({ method: "GET" }).handler(
       spot_id: row.spot_id,
       spot_name: row.spot_name,
       spot_type: row.spot_type,
+      primary_media_url: row.primary_media_url,
       address: row.address,
       latitude: row.latitude === null ? null : Number(row.latitude),
       longitude: row.longitude === null ? null : Number(row.longitude),
       short_description: row.short_description,
       created_at: row.created_at,
       created_by: row.created_by,
+      created_by_avatar_url: row.created_by_avatar_url,
       status: row.status,
     }));
   },
@@ -953,11 +976,20 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
         ) AS report_id,
         s.spot_name,
         s.spot_type,
+        (
+          SELECT sm.media_url
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+          ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+          LIMIT 1
+        ) AS primary_media_url,
         s.address,
         s.latitude,
         s.longitude,
         s.short_description,
         u.display_name AS submitted_by,
+        u.avatar_url AS submitted_by_avatar_url,
         COUNT(cr.report_id) AS report_count,
         SUM(CASE WHEN cr.status = 'open' THEN 1 ELSE 0 END) AS open_report_count,
         (
@@ -994,6 +1026,7 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
         s.longitude,
         s.short_description,
         u.display_name,
+        u.avatar_url,
         s.status
       ORDER BY report_date DESC, s.spot_id DESC
       `,
@@ -1025,11 +1058,13 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
       report_id: row.report_id,
       spot_name: row.spot_name,
       spot_type: row.spot_type,
+      primary_media_url: row.primary_media_url,
       address: row.address,
       latitude: row.latitude === null ? null : Number(row.latitude),
       longitude: row.longitude === null ? null : Number(row.longitude),
       short_description: row.short_description,
       submitted_by: row.submitted_by,
+      submitted_by_avatar_url: row.submitted_by_avatar_url,
       report_count: toNumber(row.report_count),
       open_report_count: toNumber(row.open_report_count),
       latest_reason: row.latest_reason,
@@ -1136,6 +1171,7 @@ export const getAdminReportedReviews = createServerFn({ method: "GET" }).handler
           LIMIT 1
         ) AS report_id,
         u.display_name AS reviewer,
+        u.avatar_url AS reviewer_avatar_url,
         s.spot_id,
         s.spot_name,
         r.rating,
@@ -1159,6 +1195,7 @@ export const getAdminReportedReviews = createServerFn({ method: "GET" }).handler
       GROUP BY
         r.review_id,
         u.display_name,
+        u.avatar_url,
         s.spot_id,
         s.spot_name,
         r.rating,
@@ -1194,6 +1231,7 @@ export const getAdminReportedReviews = createServerFn({ method: "GET" }).handler
       review_id: row.review_id,
       report_id: row.report_id,
       reviewer: row.reviewer,
+      reviewer_avatar_url: row.reviewer_avatar_url,
       spot_id: row.spot_id,
       spot_name: row.spot_name,
       rating: Number(row.rating),

@@ -13,7 +13,6 @@ import {
   MapPin,
   Navigation,
   Search,
-  ImagePlus,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
@@ -29,6 +28,8 @@ import {
 } from "@/components/OperatingHoursSection";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
+import { prepareImageUpload } from "@/lib/image-upload";
+import { uploadSpotMedia } from "@/server/media";
 import { createSpot } from "@/server/spots";
 
 export interface CreateSpotData {
@@ -179,6 +180,13 @@ function AddSpotPage() {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [operatingHours, setOperatingHours] = useState<DayHours[]>(createDefaultHours());
+  const [photoFiles, setPhotoFiles] = useState<Array<File | null>>([
+    null,
+    null,
+    null,
+    null,
+    null,
+  ]);
   const sessionTokenRef = useRef<unknown>(null);
 
   const handleInputChange = (
@@ -427,9 +435,30 @@ function AddSpotPage() {
       });
 
       if (result?.success) {
-        setMessage(
-          "Spot submitted successfully! Thanks for contributing. It is now pending review.",
-        );
+        const selectedPhotos = photoFiles.filter((file): file is File => file !== null);
+        let successMessage =
+          "Spot submitted successfully! Thanks for contributing. It is now pending review.";
+
+        if (selectedPhotos.length > 0) {
+          try {
+            const preparedImages = await Promise.all(
+              selectedPhotos.map((file) => prepareImageUpload(file)),
+            );
+
+            await uploadSpotMedia({
+              data: {
+                userId: user.userId,
+                spotId: result.spotId,
+                images: preparedImages,
+              },
+            });
+          } catch {
+            successMessage =
+              "Spot submitted successfully, but one or more photos could not be uploaded.";
+          }
+        }
+
+        setMessage(successMessage);
         setFormData({
           spot_name: "",
           spot_type: "",
@@ -440,6 +469,7 @@ function AddSpotPage() {
           status: "pending",
         });
         setOperatingHours(createDefaultHours());
+        setPhotoFiles([null, null, null, null, null]);
       }
     } catch (err) {
       setError(
@@ -725,33 +755,24 @@ function AddSpotPage() {
               description="Add images to help others recognize this spot."
             >
               <div className="space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                  {/* Primary upload */}
-                  <FileUpload
-                    onFileSelect={(file) => {
-                      // TODO: Connect image upload UI to spot_media backend flow
-                      console.log("Photo selected:", file);
-                    }}
-                  />
-
-                  {/* Additional upload slots */}
-                  {[1, 2].map((i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className="flex h-20 w-full items-center justify-center rounded-xl border-2 border-dashed border-warm-200 bg-warm-50/50 text-warm-300 hover:border-warm-300 hover:text-warm-400 transition-colors"
-                      onClick={() => {
-                        // TODO: Connect image upload UI to spot_media backend flow
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {photoFiles.map((photo, index) => (
+                    <FileUpload
+                      key={index}
+                      label={index === 0 ? "Primary photo" : `Photo ${index + 1}`}
+                      onFileSelect={(file) => {
+                        setPhotoFiles((prev) => {
+                          const next = [...prev];
+                          next[index] = file;
+                          return next;
+                        });
                       }}
-                    >
-                      <ImagePlus className="h-6 w-6" />
-                    </button>
+                    />
                   ))}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Upload up to 5 photos. Supported: JPG, PNG, WebP.
+                  Upload up to 5 photos. Anything over 1 MB will be compressed before upload.
                 </p>
-                {/* TODO: Connect image upload UI to spot_media backend flow */}
               </div>
             </SectionCard>
 

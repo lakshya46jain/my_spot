@@ -29,13 +29,15 @@ export function ProfileHeaderCard({
               <User className="h-9 w-9 text-warm-500" />
             )}
           </div>
-          <button
-            type="button"
-            onClick={onAvatarChange}
-            className="absolute inset-0 flex items-center justify-center rounded-full bg-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-          >
-            <Camera className="h-5 w-5 text-primary-foreground" />
-          </button>
+          {onAvatarChange ? (
+            <button
+              type="button"
+              onClick={onAvatarChange}
+              className="absolute inset-0 flex items-center justify-center rounded-full bg-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            >
+              <Camera className="h-5 w-5 text-primary-foreground" />
+            </button>
+          ) : null}
         </div>
         <div>
           <h2 className="text-xl font-semibold text-foreground">{name}</h2>

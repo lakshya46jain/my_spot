@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { AdminSectionShell } from "@/components/admin/AdminSectionShell";
 import { GoogleAddressField } from "@/components/GoogleAddressField";
+import { ConfirmationModal } from "@/components/ConfirmationModal";
 import { StatusBadge } from "@/components/admin/StatusBadge";
 import { SearchFilterBar } from "@/components/admin/SearchFilterBar";
 import { BulkActionsBar } from "@/components/admin/BulkActionsBar";
@@ -25,9 +26,10 @@ import {
   getGoogleMapsSearchUrl,
 } from "@/lib/google-maps-urls";
 import { getSpotTypeLabel, SPOT_TYPES } from "@/lib/spot-types";
+import { getSpot, deleteSpotMedia, updateSpot } from "@/server/spots";
 import { getAdminSpots, updateAdminSpotStatuses } from "@/server/admin";
-import { updateSpot } from "@/server/spots";
 import type { AdminSpotRow } from "@/types/admin";
+import type { SpotMedia } from "@/types/api";
 
 export const Route = createFileRoute("/admin/pending-spots")({
   component: PendingSpotsPage,
@@ -41,6 +43,15 @@ function formatDate(value: string) {
   });
 }
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
+
 function PendingSpotsPage() {
   const { isLoggedIn, user } = useAuth();
   const canAccessAdmin = hasAdminAccess(user);
@@ -52,6 +63,9 @@ function PendingSpotsPage() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editingSpot, setEditingSpot] = useState<AdminSpotRow | null>(null);
+  const [editingSpotMedia, setEditingSpotMedia] = useState<SpotMedia[]>([]);
+  const [mediaDeleteTarget, setMediaDeleteTarget] = useState<SpotMedia | null>(null);
+  const [deletingMedia, setDeletingMedia] = useState(false);
   const [editForm, setEditForm] = useState({
     spot_name: "",
     spot_type: "",
@@ -110,7 +124,7 @@ function PendingSpotsPage() {
     setSelected(next);
   };
 
-  const openEdit = (spot: AdminSpotRow) => {
+  const openEdit = async (spot: AdminSpotRow) => {
     setEditingSpot(spot);
     setEditForm({
       spot_name: spot.spot_name,
@@ -120,6 +134,12 @@ function PendingSpotsPage() {
       longitude: spot.longitude === null ? "" : String(spot.longitude),
       short_description: spot.short_description ?? "",
     });
+    try {
+      const result = await getSpot({ data: { spotId: spot.spot_id } });
+      setEditingSpotMedia(result.media ?? []);
+    } catch {
+      setEditingSpotMedia([]);
+    }
   };
 
   const handleBulkStatusUpdate = async (status: "active" | "inactive") => {
@@ -204,6 +224,36 @@ function PendingSpotsPage() {
     }
   };
 
+  const handleDeleteMedia = async () => {
+    if (!editingSpot || !mediaDeleteTarget?.media_id) {
+      return;
+    }
+
+    try {
+      setDeletingMedia(true);
+      setPageError("");
+      setActionMessage("");
+      await deleteSpotMedia({
+        data: {
+          spotId: editingSpot.spot_id,
+          mediaId: mediaDeleteTarget.media_id,
+        },
+      });
+      setEditingSpotMedia((current) =>
+        current.filter((media) => media.media_id !== mediaDeleteTarget.media_id),
+      );
+      setActionMessage("Photo removed successfully.");
+      await loadPendingSpots();
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not delete the selected photo."),
+      );
+    } finally {
+      setDeletingMedia(false);
+      setMediaDeleteTarget(null);
+    }
+  };
+
   return (
     <>
       <FloatingRightNav />
@@ -263,8 +313,17 @@ function PendingSpotsPage() {
                           <Checkbox checked={selected.has(spot.spot_id)} onCheckedChange={() => toggleSelect(spot.spot_id)} />
                         </td>
                         <td className="p-3">
-                          <p className="font-medium text-foreground">{spot.spot_name}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{spot.short_description}</p>
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-warm-100 overflow-hidden flex items-center justify-center shrink-0">
+                              {spot.primary_media_url ? (
+                                <img src={spot.primary_media_url} alt={spot.spot_name} className="h-full w-full object-cover" />
+                              ) : null}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium text-foreground">{spot.spot_name}</p>
+                              <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{spot.short_description}</p>
+                            </div>
+                          </div>
                         </td>
                         <td className="p-3 text-muted-foreground hidden md:table-cell">{getSpotTypeLabel(spot.spot_type)}</td>
                         <td className="p-3 text-xs hidden lg:table-cell">
@@ -285,7 +344,18 @@ function PendingSpotsPage() {
                             <span className="text-muted-foreground">No address</span>
                           )}
                         </td>
-                        <td className="p-3 text-muted-foreground hidden md:table-cell">{spot.created_by}</td>
+                        <td className="p-3 hidden md:table-cell">
+                          <div className="flex items-center gap-2 text-muted-foreground">
+                            <div className="h-7 w-7 rounded-full bg-warm-200 overflow-hidden flex items-center justify-center text-[10px] font-semibold text-warm-700 shrink-0">
+                              {spot.created_by_avatar_url ? (
+                                <img src={spot.created_by_avatar_url} alt={spot.created_by} className="h-full w-full object-cover" />
+                              ) : (
+                                getInitials(spot.created_by)
+                              )}
+                            </div>
+                            <span>{spot.created_by}</span>
+                          </div>
+                        </td>
                         <td className="p-3 text-muted-foreground text-xs hidden lg:table-cell">{formatDate(spot.created_at)}</td>
                         <td className="p-3"><StatusBadge status={spot.status} /></td>
                         <td className="p-3">
@@ -367,6 +437,40 @@ function PendingSpotsPage() {
                 <label className="text-sm font-medium text-foreground">Description</label>
                 <Textarea value={editForm.short_description} onChange={(event) => setEditForm((form) => ({ ...form, short_description: event.target.value }))} className="mt-1 rounded-xl" rows={3} />
               </div>
+              <div>
+                <div className="mb-2">
+                  <label className="text-sm font-medium text-foreground">Photos</label>
+                  <p className="text-xs text-muted-foreground">
+                    Remove individual photos before approving this spot.
+                  </p>
+                </div>
+                {editingSpotMedia.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {editingSpotMedia.map((media) => (
+                      <div key={media.media_id ?? media.storage_path} className="overflow-hidden rounded-xl border border-border bg-muted/20">
+                        <img src={media.media_url} alt={media.file_name} className="h-28 w-full object-cover" />
+                        <div className="flex items-center justify-between gap-2 p-2">
+                          <span className="truncate text-xs text-muted-foreground">
+                            {media.is_primary ? "Primary photo" : media.file_name}
+                          </span>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            className="h-7 rounded-lg px-2 text-xs"
+                            onClick={() => setMediaDeleteTarget(media)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                    No photos uploaded for this spot.
+                  </div>
+                )}
+              </div>
               <div className="flex gap-2 pt-4">
                 <Button className="flex-1 rounded-xl" onClick={handleSaveAndApprove}>
                   <Check className="h-4 w-4 mr-1.5" /> Save & Approve
@@ -379,6 +483,21 @@ function PendingSpotsPage() {
           )}
         </SheetContent>
       </Sheet>
+      <ConfirmationModal
+        open={mediaDeleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingMedia) {
+            setMediaDeleteTarget(null);
+          }
+        }}
+        title="Remove Photo"
+        description="This will hide this photo from the pending spot, but keep the record and Firebase file for future access."
+        confirmLabel={deletingMedia ? "Removing..." : "Remove Photo"}
+        onConfirm={() => {
+          void handleDeleteMedia();
+        }}
+        destructive
+      />
     </>
   );
 }

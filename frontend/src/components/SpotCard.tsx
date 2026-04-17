@@ -91,11 +91,19 @@ export function SpotCard({
             />
           </button>
         ) : null}
-        <div className="flex flex-col items-center gap-2 text-warm-400">
-          <ImageOff className="h-10 w-10" />
-          <span className="text-xs font-medium">Photo coming soon</span>
-        </div>
-        {/* TODO: connect spot media carousel to spot_media API */}
+        {spot.primary_media_url ? (
+          <img
+            src={spot.primary_media_url}
+            alt={spot.spot_name}
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="flex flex-col items-center gap-2 text-warm-400">
+            <ImageOff className="h-10 w-10" />
+            <span className="text-xs font-medium">Photo coming soon</span>
+          </div>
+        )}
       </div>
 
       {/* Content */}

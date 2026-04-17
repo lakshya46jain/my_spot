@@ -28,6 +28,7 @@ export interface AdminDashboardAdmin {
   name: string;
   role: string;
   lastActive: string;
+  avatar_url?: string | null;
 }
 
 export interface AdminDashboardData {
@@ -67,6 +68,7 @@ export interface AdminUserRow {
   user_id: number;
   display_name: string;
   email: string;
+  avatar_url?: string | null;
   role_id: number;
   role_name: string;
   created_at: string;
@@ -86,12 +88,14 @@ export interface AdminSpotRow {
   spot_id: number;
   spot_name: string;
   spot_type: string;
+  primary_media_url?: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
   short_description: string | null;
   created_at: string;
   created_by: string;
+  created_by_avatar_url?: string | null;
   status: "active" | "inactive" | "pending";
 }
 
@@ -111,11 +115,13 @@ export interface AdminReportedSpotRow {
   report_id: number;
   spot_name: string;
   spot_type: string;
+  primary_media_url?: string | null;
   address: string | null;
   latitude: number | null;
   longitude: number | null;
   short_description: string | null;
   submitted_by: string;
+  submitted_by_avatar_url?: string | null;
   report_count: number;
   open_report_count: number;
   latest_reason: string;
@@ -129,6 +135,7 @@ export interface AdminReportedReviewRow {
   review_id: number;
   report_id: number;
   reviewer: string;
+  reviewer_avatar_url?: string | null;
   spot_id: number;
   spot_name: string;
   rating: number;

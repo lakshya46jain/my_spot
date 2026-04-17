@@ -27,9 +27,12 @@ type FavoriteSpotRow = RowDataPacket & {
   created_at: string;
   last_modified: string | null;
   creator_name: string;
+  creator_avatar_url: string | null;
   user_id: number;
   average_rating: number | string | null;
   review_count: number;
+  primary_media_url: string | null;
+  media_count: number;
   favorited_at?: string | null;
 };
 
@@ -48,6 +51,7 @@ function normalizeFavoriteSpot(row: FavoriteSpotRow) {
     average_rating:
       row.average_rating === null ? null : Number(row.average_rating),
     review_count: Number(row.review_count ?? 0),
+    media_count: Number(row.media_count ?? 0),
     is_favorited: true,
     favorited_at: row.favorited_at ?? null,
   };
@@ -99,8 +103,23 @@ export const getFavoriteSpots = createServerFn({ method: "GET" })
         s.last_modified,
         s.user_id,
         u.display_name AS creator_name,
+        u.avatar_url AS creator_avatar_url,
         AVG(r.rating) AS average_rating,
         COUNT(r.review_id) AS review_count,
+        (
+          SELECT sm.media_url
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+          ORDER BY sm.is_primary DESC, sm.sort_order ASC, sm.media_id ASC
+          LIMIT 1
+        ) AS primary_media_url,
+        (
+          SELECT COUNT(*)
+          FROM spot_media sm
+          WHERE sm.spot_id = s.spot_id
+            AND sm.deleted_at IS NULL
+        ) AS media_count,
         f.created_at AS favorited_at
       FROM favorites f
       JOIN spots s ON f.spot_id = s.spot_id
@@ -122,6 +141,7 @@ export const getFavoriteSpots = createServerFn({ method: "GET" })
         s.last_modified,
         s.user_id,
         u.display_name,
+        u.avatar_url,
         f.created_at
       ORDER BY f.created_at DESC
       `,

@@ -1,11 +1,10 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageContainer } from "@/components/PageContainer";
 import { ProfileHeaderCard } from "@/components/ProfileHeaderCard";
 import { SectionCard } from "@/components/SectionCard";
 import { DangerZoneCard } from "@/components/DangerZoneCard";
 import { ConfirmationModal } from "@/components/ConfirmationModal";
-import { FileUpload } from "@/components/FileUpload";
 import { PasswordInput } from "@/components/PasswordInput";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +12,8 @@ import { FloatingRightNav } from "@/components/FloatingRightNav";
 import { PageTitleBlock } from "@/components/PageTitleBlock";
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
+import { prepareImageUpload } from "@/lib/image-upload";
+import { uploadUserAvatar } from "@/server/media";
 import { updateProfile } from "@/server/update-profile";
 import { updatePassword } from "@/server/update-password";
 import { deleteAccount } from "@/server/delete-account";
@@ -41,6 +42,8 @@ function ProfilePage() {
 
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isSavingPassword, setIsSavingPassword] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -100,6 +103,7 @@ function ProfilePage() {
         updateUser({
           displayName: result.user.displayName,
           email: result.user.email,
+          avatarUrl: result.user.avatarUrl ?? user.avatarUrl ?? null,
         });
         setProfileSuccess("Profile updated successfully.");
       }
@@ -178,6 +182,40 @@ function ProfilePage() {
     }
   };
 
+  const handleAvatarUpload = async (file: File | null) => {
+    if (!user || !file) {
+      return;
+    }
+
+    try {
+      setIsUploadingAvatar(true);
+      setProfileError("");
+      setProfileSuccess("");
+
+      const preparedImage = await prepareImageUpload(file);
+      const result = await uploadUserAvatar({
+        data: {
+          userId: user.userId,
+          image: preparedImage,
+        },
+      });
+
+      updateUser({
+        avatarUrl: result.avatarUrl,
+      });
+      setProfileSuccess("Profile photo updated successfully.");
+    } catch (error) {
+      setProfileError(
+        getUserFriendlyErrorMessage(
+          error,
+          "Something went wrong while uploading your profile photo.",
+        ),
+      );
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   return (
     <>
       <FloatingRightNav />
@@ -192,9 +230,24 @@ function ProfilePage() {
           <ProfileHeaderCard
             name={user?.displayName ?? "Your Name"}
             email={user?.email ?? "you@example.com"}
+            avatarUrl={user?.avatarUrl ?? null}
             badge={user?.roleName ?? "Student"}
             onAvatarChange={() => {
-              // Database implementation required here — upload new avatar
+              if (!isUploadingAvatar) {
+                avatarInputRef.current?.click();
+              }
+            }}
+          />
+          <input
+            ref={avatarInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            disabled={isUploadingAvatar}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              void handleAvatarUpload(file);
+              event.currentTarget.value = "";
             }}
           />
 
@@ -259,19 +312,6 @@ function ProfilePage() {
                 </Button>
               </div>
             </form>
-          </SectionCard>
-
-          {/* Profile Photo */}
-          <SectionCard
-            title="Profile Photo"
-            description="Upload or change your profile picture."
-          >
-            <FileUpload
-              onFileSelect={(file) => {
-                // Database implementation required here — upload profile photo to storage
-                console.log("Profile photo selected:", file);
-              }}
-            />
           </SectionCard>
 
           {/* Password */}

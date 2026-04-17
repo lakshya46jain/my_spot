@@ -1,5 +1,5 @@
-CREATE SCHEMA IF NOT EXISTS myspot;
-USE myspot;
+CREATE SCHEMA IF NOT EXISTS railway;
+USE railway;
 
 SET FOREIGN_KEY_CHECKS = 0;
 
@@ -33,6 +33,7 @@ CREATE TABLE users (
     user_id INT NOT NULL AUTO_INCREMENT,
     display_name VARCHAR(100) NOT NULL,
     email VARCHAR(255) NOT NULL,
+    avatar_url VARCHAR(512) DEFAULT NULL,
     password_hash VARCHAR(255) NOT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_login DATETIME DEFAULT NULL,
@@ -135,11 +136,21 @@ CREATE TABLE spot_media (
     media_id INT NOT NULL AUTO_INCREMENT,
     spot_id INT NOT NULL,
     user_id INT NOT NULL,
-    media_url VARCHAR(255) NOT NULL,
+    storage_path VARCHAR(255) NOT NULL,
+    file_name VARCHAR(255) NOT NULL,
+    media_url VARCHAR(512) NOT NULL,
+    mime_type VARCHAR(100) NOT NULL,
+    file_size_bytes INT UNSIGNED NOT NULL,
+    width INT UNSIGNED DEFAULT NULL,
+    height INT UNSIGNED DEFAULT NULL,
+    sort_order INT NOT NULL DEFAULT 0,
+    is_primary TINYINT(1) NOT NULL DEFAULT 0,
     upload_date DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    deleted_at DATETIME DEFAULT NULL,
     PRIMARY KEY (media_id),
     KEY fk_spot_media_spot (spot_id),
     KEY fk_spot_media_user (user_id),
+    KEY idx_spot_media_ordering (spot_id, deleted_at, is_primary, sort_order, upload_date),
     CONSTRAINT fk_spot_media_spot
         FOREIGN KEY (spot_id) REFERENCES spots (spot_id),
     CONSTRAINT fk_spot_media_user

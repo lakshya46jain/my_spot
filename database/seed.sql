@@ -43,17 +43,18 @@ INSERT INTO users (
     user_id,
     display_name,
     email,
+    avatar_url,
     password_hash,
     last_login,
     is_active,
     deleted_at,
     role_id
 ) VALUES
-(1, 'Liam Erickson', 'liam@vt.edu', 'hash1', '2026-04-15 08:30:00', 1, NULL, 1),
-(2, 'Sarah Collins', 'sarah@vt.edu', 'hash2', '2026-04-14 21:15:00', 1, NULL, 2),
-(3, 'Marcus Lee', 'marcus@vt.edu', 'hash3', '2026-04-15 10:05:00', 1, NULL, 3),
-(4, 'Emma Carter', 'emma@vt.edu', 'hash4', '2026-04-13 17:20:00', 1, NULL, 2),
-(5, 'Noah Bennett', 'noah@vt.edu', 'hash5', '2026-04-12 09:45:00', 1, NULL, 4);
+(1, 'Liam Erickson', 'liam@vt.edu', 'https://example.com/users/1/avatars/liam-erickson.jpg', 'hash1', '2026-04-15 08:30:00', 1, NULL, 1),
+(2, 'Sarah Collins', 'sarah@vt.edu', 'https://example.com/users/2/avatars/sarah-collins.jpg', 'hash2', '2026-04-14 21:15:00', 1, NULL, 2),
+(3, 'Marcus Lee', 'marcus@vt.edu', 'https://example.com/users/3/avatars/marcus-lee.jpg', 'hash3', '2026-04-15 10:05:00', 1, NULL, 3),
+(4, 'Emma Carter', 'emma@vt.edu', 'https://example.com/users/4/avatars/emma-carter.jpg', 'hash4', '2026-04-13 17:20:00', 1, NULL, 2),
+(5, 'Noah Bennett', 'noah@vt.edu', 'https://example.com/users/5/avatars/noah-bennett.jpg', 'hash5', '2026-04-12 09:45:00', 1, NULL, 4);
 
 -- ======================
 -- SPOTS
@@ -110,12 +111,25 @@ INSERT INTO spot_hours (hours_id, spot_id, days_of_week, open_time, close_time, 
 -- ======================
 -- SPOT MEDIA
 -- ======================
-INSERT INTO spot_media (media_id, spot_id, user_id, media_url) VALUES
-(1, 1, 1, 'https://example.com/media/mill-mountain-coffee.jpg'),
-(2, 2, 2, 'https://example.com/media/benny-marzanos.jpg'),
-(3, 3, 3, 'https://example.com/media/newman-library.jpg'),
-(4, 4, 4, 'https://example.com/media/drillfield.jpg'),
-(5, 5, 5, 'https://example.com/media/deets-place.jpg');
+INSERT INTO spot_media (
+    media_id,
+    spot_id,
+    user_id,
+    storage_path,
+    file_name,
+    media_url,
+    mime_type,
+    file_size_bytes,
+    width,
+    height,
+    sort_order,
+    is_primary
+) VALUES
+(1, 1, 1, 'spots/1/images/1713180000000-mill-mountain-coffee.jpg', 'mill-mountain-coffee.jpg', 'https://example.com/spots/1/images/mill-mountain-coffee.jpg', 'image/jpeg', 245120, 1600, 1200, 0, 1),
+(2, 2, 2, 'spots/2/images/1713180001000-benny-marzanos.jpg', 'benny-marzanos.jpg', 'https://example.com/spots/2/images/benny-marzanos.jpg', 'image/jpeg', 231552, 1600, 1200, 0, 1),
+(3, 3, 3, 'spots/3/images/1713180002000-newman-library.jpg', 'newman-library.jpg', 'https://example.com/spots/3/images/newman-library.jpg', 'image/jpeg', 301056, 1600, 1200, 0, 1),
+(4, 4, 4, 'spots/4/images/1713180003000-drillfield.jpg', 'drillfield.jpg', 'https://example.com/spots/4/images/drillfield.jpg', 'image/jpeg', 196608, 1600, 1200, 0, 1),
+(5, 5, 5, 'spots/5/images/1713180004000-deets-place.jpg', 'deets-place.jpg', 'https://example.com/spots/5/images/deets-place.jpg', 'image/jpeg', 212992, 1600, 1200, 0, 1);
 
 -- ======================
 -- CONTENT REPORT

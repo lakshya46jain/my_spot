@@ -174,7 +174,6 @@ function SpotDetailsPage() {
 
   // Carousel state
   const [currentSlide, setCurrentSlide] = useState(0);
-  const placeholderSlides = 4; // TODO: connect spot media carousel to spot_media API
 
   // Report modals
   const [reportSpotOpen, setReportSpotOpen] = useState(false);
@@ -183,6 +182,7 @@ function SpotDetailsPage() {
   // Review composer
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
+  const mediaSlideCount = spot?.media?.length ?? 0;
 
   useEffect(() => {
     async function load() {
@@ -222,6 +222,12 @@ function SpotDetailsPage() {
       load();
     }
   }, [isPendingAdminPreview, spotId]);
+
+  useEffect(() => {
+    if (currentSlide >= mediaSlideCount) {
+      setCurrentSlide(0);
+    }
+  }, [currentSlide, mediaSlideCount]);
 
   const reviewCount = reviews.length;
   const aggregatedRating =
@@ -365,9 +371,13 @@ function SpotDetailsPage() {
   const hasMapsEmbed =
     hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
   const operatingHours = spot.operating_hours ?? [];
+  const mediaItems = spot.media ?? [];
   const hasOperatingHours = operatingHours.length > 0;
   const canWriteReview =
     isLoggedIn && !isPendingAdminPreview && spot.status === "active";
+  const currentMedia = mediaItems[currentSlide] ?? null;
+
+  const creatorInitials = getInitials(spot.creator_name);
 
   return (
     <PageContainer className="pr-0">
@@ -384,20 +394,28 @@ function SpotDetailsPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         {/* ─── Media Carousel ─── */}
         <div className="relative rounded-2xl overflow-hidden bg-warm-100 h-72 md:h-96 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-2 text-warm-400">
-            <ImageOff className="h-14 w-14" />
-            <span className="text-sm font-medium">
-              Photo {currentSlide + 1} of {placeholderSlides}
-            </span>
-            <span className="text-xs text-warm-300">Media coming soon</span>
-          </div>
-          {/* TODO: connect spot media carousel to spot_media API */}
-
+          {currentMedia ? (
+            <img
+              src={currentMedia.media_url}
+              alt={`${spot.spot_name} photo ${currentSlide + 1}`}
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex flex-col items-center gap-2 text-warm-400">
+              <ImageOff className="h-14 w-14" />
+              <span className="text-sm font-medium">No photos yet</span>
+              <span className="text-xs text-warm-300">
+                Be the first to add one for this spot.
+              </span>
+            </div>
+          )}
+          {mediaSlideCount > 1 ? (
+            <>
             {/* Navigation arrows */}
             <button
               onClick={() =>
                 setCurrentSlide((prev) =>
-                  prev === 0 ? placeholderSlides - 1 : prev - 1,
+                  prev === 0 ? mediaSlideCount - 1 : prev - 1,
                 )
               }
               className="absolute left-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-card/80 backdrop-blur-sm text-foreground hover:bg-card transition-colors shadow-md"
@@ -407,7 +425,7 @@ function SpotDetailsPage() {
             <button
               onClick={() =>
                 setCurrentSlide((prev) =>
-                  prev === placeholderSlides - 1 ? 0 : prev + 1,
+                  prev === mediaSlideCount - 1 ? 0 : prev + 1,
                 )
               }
               className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-full bg-card/80 backdrop-blur-sm text-foreground hover:bg-card transition-colors shadow-md"
@@ -417,9 +435,9 @@ function SpotDetailsPage() {
 
             {/* Dots */}
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-              {Array.from({ length: placeholderSlides }).map((_, i) => (
+              {mediaItems.map((media, i) => (
                 <button
-                  key={i}
+                  key={media.storage_path}
                   onClick={() => setCurrentSlide(i)}
                   className={`h-2 rounded-full transition-all ${
                     i === currentSlide
@@ -429,6 +447,8 @@ function SpotDetailsPage() {
                 />
               ))}
             </div>
+            </>
+          ) : null}
           </div>
 
           {/* ─── Spot Info ─── */}
@@ -640,9 +660,16 @@ function SpotDetailsPage() {
               Added By
             </h2>
             <div className="flex items-center gap-4">
-              {/* TODO: replace placeholder creator avatar with real user profile image */}
-              <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-sm font-semibold text-warm-700 shrink-0">
-                {getInitials(spot.creator_name)}
+              <div className="h-12 w-12 rounded-full bg-warm-200 flex items-center justify-center text-sm font-semibold text-warm-700 shrink-0 overflow-hidden">
+                {spot.creator_avatar_url ? (
+                  <img
+                    src={spot.creator_avatar_url}
+                    alt={spot.creator_name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  creatorInitials
+                )}
               </div>
               <div>
                 <p className="text-sm font-semibold text-foreground">
@@ -743,9 +770,16 @@ function SpotDetailsPage() {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <div className="flex items-center gap-3">
-                          {/* TODO: replace with real reviewer profile image */}
-                          <div className="h-9 w-9 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700 shrink-0">
-                            {getInitials(review.reviewer_name)}
+                          <div className="h-9 w-9 rounded-full bg-warm-200 flex items-center justify-center text-xs font-semibold text-warm-700 shrink-0 overflow-hidden">
+                            {review.reviewer_avatar_url ? (
+                              <img
+                                src={review.reviewer_avatar_url}
+                                alt={review.reviewer_name}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              getInitials(review.reviewer_name)
+                            )}
                           </div>
                           <div>
                             <p className="text-sm font-semibold text-foreground">

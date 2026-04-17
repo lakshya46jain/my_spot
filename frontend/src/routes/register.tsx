@@ -7,6 +7,8 @@ import { PasswordInput } from "@/components/PasswordInput";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FileUpload } from "@/components/FileUpload";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
+import { prepareImageUpload } from "@/lib/image-upload";
+import { uploadUserAvatar } from "@/server/media";
 import { registerUser } from "@/server/register-user";
 
 export const Route = createFileRoute("/register")({
@@ -21,6 +23,7 @@ function RegisterPage() {
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [agreedToTerms, setAgreedToTerms] = React.useState(false);
+  const [profilePhoto, setProfilePhoto] = React.useState<File | null>(null);
 
   const [errorMessage, setErrorMessage] = React.useState("");
   const [successMessage, setSuccessMessage] = React.useState("");
@@ -45,9 +48,25 @@ function RegisterPage() {
       });
 
       if (result?.success) {
-        setSuccessMessage(
-          "Account created successfully. Redirecting to Sign In...",
-        );
+        let followupSuccessMessage =
+          "Account created successfully. Redirecting to Sign In...";
+
+        if (profilePhoto) {
+          try {
+            const preparedImage = await prepareImageUpload(profilePhoto);
+            await uploadUserAvatar({
+              data: {
+                userId: result.userId,
+                image: preparedImage,
+              },
+            });
+          } catch {
+            followupSuccessMessage =
+              "Account created successfully, but your profile photo could not be uploaded yet.";
+          }
+        }
+
+        setSuccessMessage(followupSuccessMessage);
         setTimeout(() => {
           navigate({ to: "/signin" });
         }, 1000);
@@ -130,8 +149,7 @@ function RegisterPage() {
         <FileUpload
           label="Profile Picture"
           onFileSelect={(file) => {
-            // Profile picture storage is intentionally deferred for now.
-            console.log("Selected profile picture:", file);
+            setProfilePhoto(file);
           }}
         />
 
