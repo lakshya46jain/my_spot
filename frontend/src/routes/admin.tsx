@@ -109,9 +109,9 @@ function AdminPage() {
   const quickLinks = dashboardData
     ? [
         { to: "/admin/pending-spots", label: "Pending Spots", icon: Clock, count: metrics?.pendingApprovals ?? 0, color: "bg-amber-100 text-amber-700" },
-        { to: "/admin/spots", label: "All Spots", icon: MapPin, count: (metrics?.totalActiveSpots ?? 0) + (metrics?.inactiveSpots ?? 0) + (metrics?.pendingApprovals ?? 0), color: "bg-emerald-100 text-emerald-700" },
         { to: "/admin/reported-spots", label: "Reported Spots", icon: Flag, count: metrics?.totalSpotsReported ?? 0, color: "bg-rose-100 text-rose-700" },
         { to: "/admin/reported-reviews", label: "Reported Reviews", icon: MessageSquareWarning, count: metrics?.totalCommentsReported ?? 0, color: "bg-orange-100 text-orange-700" },
+        { to: "/admin/spots", label: "All Spots", icon: MapPin, count: (metrics?.totalActiveSpots ?? 0) + (metrics?.inactiveSpots ?? 0) + (metrics?.pendingApprovals ?? 0), color: "bg-emerald-100 text-emerald-700" },
         { to: "/admin/users", label: "Users", icon: Users, count: metrics?.totalUsers ?? 0, color: "bg-sky-100 text-sky-700" },
         { to: "/admin/roles", label: "Roles", icon: UserCog, count: dashboardData.roleCount, color: "bg-violet-100 text-violet-700" },
         { to: "/admin/attributes", label: "Attributes", icon: Tags, count: dashboardData.attributeCount, color: "bg-cyan-100 text-cyan-700" },
@@ -162,17 +162,17 @@ function AdminPage() {
           ) : (
             <>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
-                <MetricCard label="Total Users" value={metrics!.totalUsers.toLocaleString()} icon={<Users className="h-5 w-5 text-primary" />} />
-                <MetricCard label="Active Spots" value={metrics!.totalActiveSpots} icon={<MapPin className="h-5 w-5 text-primary" />} />
                 <MetricCard label="Pending Approvals" value={metrics!.pendingApprovals} icon={<Clock className="h-5 w-5 text-amber-600" />} />
                 <MetricCard label="Spots Reported" value={metrics!.totalSpotsReported} icon={<Flag className="h-5 w-5 text-rose-600" />} />
+                <MetricCard label="Spot Reports Resolved" value={metrics!.spotReportsResolved} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} />
                 <MetricCard label="Reviews Reported" value={metrics!.totalCommentsReported} icon={<MessageSquareWarning className="h-5 w-5 text-orange-600" />} />
+                <MetricCard label="Review Reports Resolved" value={metrics!.commentReportsResolved} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} />
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+                <MetricCard label="Active Spots" value={metrics!.totalActiveSpots} icon={<MapPin className="h-5 w-5 text-primary" />} />
                 <MetricCard label="Inactive Spots" value={metrics!.inactiveSpots} icon={<AlertTriangle className="h-5 w-5 text-warm-500" />} />
-                <MetricCard label="Spot Reports Resolved" value={metrics!.spotReportsResolved} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} />
-                <MetricCard label="Review Reports Resolved" value={metrics!.commentReportsResolved} icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />} />
+                <MetricCard label="Total Users" value={metrics!.totalUsers.toLocaleString()} icon={<Users className="h-5 w-5 text-primary" />} />
                 <MetricCard label="Active Admins" value={metrics!.activeAdmins} icon={<Shield className="h-5 w-5 text-primary" />} />
               </div>
 
@@ -246,6 +246,32 @@ function AdminPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
                 <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Spot Submissions</h3>
+                  <ChartContainer config={{ submissions: { label: "Submissions", color: "var(--chart-2)" } }} className="h-[200px] w-full">
+                    <BarChart data={dashboardData.spotSubmissionsData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={30} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Bar dataKey="submissions" fill="var(--color-chart-2)" radius={[6, 6, 0, 0]} />
+                    </BarChart>
+                  </ChartContainer>
+                </div>
+
+                <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
+                  <h3 className="text-sm font-semibold text-foreground mb-4">Report Volume</h3>
+                  <ChartContainer config={{ reports: { label: "Reports", color: "var(--chart-1)" } }} className="h-[200px] w-full">
+                    <LineChart data={dashboardData.reportVolumeData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
+                      <YAxis tickLine={false} axisLine={false} width={30} />
+                      <ChartTooltip content={<ChartTooltipContent />} />
+                      <Line type="monotone" dataKey="reports" stroke="var(--color-chart-1)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-chart-1)" }} />
+                    </LineChart>
+                  </ChartContainer>
+                </div>
+
+                <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
                   <h3 className="text-sm font-semibold text-foreground mb-4">Spot Status Breakdown</h3>
                   <ChartContainer config={{ Active: { color: "var(--chart-1)" }, Inactive: { color: "var(--chart-3)" }, Pending: { color: "var(--chart-4)" } }} className="h-[200px] w-full">
                     <PieChart>
@@ -285,32 +311,6 @@ function AdminPage() {
                     </AreaChart>
                   </ChartContainer>
                 </div>
-
-                <div className="rounded-2xl bg-card border border-border p-5 shadow-sm">
-                  <h3 className="text-sm font-semibold text-foreground mb-4">Spot Submissions</h3>
-                  <ChartContainer config={{ submissions: { label: "Submissions", color: "var(--chart-2)" } }} className="h-[200px] w-full">
-                    <BarChart data={dashboardData.spotSubmissionsData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                      <YAxis tickLine={false} axisLine={false} width={30} />
-                      <ChartTooltip content={<ChartTooltipContent />} />
-                      <Bar dataKey="submissions" fill="var(--color-chart-2)" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ChartContainer>
-                </div>
-              </div>
-
-              <div className="rounded-2xl bg-card border border-border p-5 shadow-sm mb-10">
-                <h3 className="text-sm font-semibold text-foreground mb-4">Report Volume Over Time</h3>
-                <ChartContainer config={{ reports: { label: "Reports", color: "var(--chart-1)" } }} className="h-[180px] w-full">
-                  <LineChart data={dashboardData.reportVolumeData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} width={30} />
-                    <ChartTooltip content={<ChartTooltipContent />} />
-                    <Line type="monotone" dataKey="reports" stroke="var(--color-chart-1)" strokeWidth={2} dot={{ r: 4, fill: "var(--color-chart-1)" }} />
-                  </LineChart>
-                </ChartContainer>
               </div>
 
               {dashboardData.activeAdmins.length > 3 ? (

@@ -17,8 +17,12 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
-import { Eye, Pencil, Ban, CheckCircle2, Shield } from "lucide-react";
+import { Eye, Pencil, Ban, CheckCircle2, Shield, Check, X } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  ATTRIBUTE_TYPE_OPTIONS,
+  getAttributeTypeLabel,
+} from "@/lib/attributes";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { hasAdminAccess } from "@/lib/admin";
 import {
@@ -26,10 +30,11 @@ import {
   getGoogleMapsSearchUrl,
 } from "@/lib/google-maps-urls";
 import { getSpotTypeLabel, SPOT_TYPES } from "@/lib/spot-types";
+import { getAttributeMenu } from "@/server/attributes";
 import { getAdminSpots, updateAdminSpotStatuses } from "@/server/admin";
 import { deleteSpotMedia, getSpot, updateSpot } from "@/server/spots";
 import type { AdminSpotRow } from "@/types/admin";
-import type { SpotMedia } from "@/types/api";
+import type { AttributeDefinition, SpotAttribute, SpotMedia } from "@/types/api";
 
 export const Route = createFileRoute("/admin/spots")({
   component: AllSpotsPage,
@@ -52,6 +57,70 @@ function getInitials(name: string) {
     .toUpperCase();
 }
 
+type EditableAttributeReview = {
+  spot_attribute_id: number;
+  decision: "approve_existing" | "approve_new" | "reject";
+  can_approve_new: boolean;
+  attribute_id: string;
+  name: string;
+  attribute_type: (typeof ATTRIBUTE_TYPE_OPTIONS)[number]["value"];
+  allowed_values_text: string;
+  number_unit: string;
+  min_value: string;
+  max_value: string;
+  help_text: string;
+  value: string;
+  notes: string;
+  rejection_reason: string;
+  moderation_status: SpotAttribute["moderation_status"];
+};
+
+function renderAttributeValueInput(params: {
+  attribute?: AttributeDefinition;
+  attributeType: (typeof ATTRIBUTE_TYPE_OPTIONS)[number]["value"];
+  allowedValuesText: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const options =
+    params.attribute?.allowed_values ??
+    (params.attributeType === "single_choice"
+      ? params.allowedValuesText
+          .split(",")
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      : params.attributeType === "boolean"
+        ? ["Yes", "No"]
+        : []);
+
+  if (params.attributeType === "boolean" || params.attributeType === "single_choice") {
+    return (
+      <Select value={params.value} onValueChange={params.onChange}>
+        <SelectTrigger className="h-10 rounded-xl">
+          <SelectValue placeholder="Choose a value" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  return (
+    <Input
+      type={params.attributeType === "number" ? "number" : "text"}
+      value={params.value}
+      onChange={(event) => params.onChange(event.target.value)}
+      className="h-10 rounded-xl"
+      placeholder="Enter value"
+    />
+  );
+}
+
 function AllSpotsPage() {
   const { isLoggedIn, user } = useAuth();
   const canAccessAdmin = hasAdminAccess(user);
@@ -65,6 +134,10 @@ function AllSpotsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editingSpot, setEditingSpot] = useState<AdminSpotRow | null>(null);
   const [editingSpotMedia, setEditingSpotMedia] = useState<SpotMedia[]>([]);
+  const [editingSpotAttributes, setEditingSpotAttributes] = useState<
+    EditableAttributeReview[]
+  >([]);
+  const [attributeMenu, setAttributeMenu] = useState<AttributeDefinition[]>([]);
   const [mediaDeleteTarget, setMediaDeleteTarget] = useState<SpotMedia | null>(null);
   const [deletingMedia, setDeletingMedia] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -93,6 +166,20 @@ function AllSpotsPage() {
   useEffect(() => {
     if (canAccessAdmin) {
       loadSpots();
+    }
+  }, [canAccessAdmin]);
+
+  useEffect(() => {
+    async function loadAttributes() {
+      try {
+        setAttributeMenu(await getAttributeMenu());
+      } catch {
+        setAttributeMenu([]);
+      }
+    }
+
+    if (canAccessAdmin) {
+      void loadAttributes();
     }
   }, [canAccessAdmin]);
 
@@ -137,8 +224,37 @@ function AllSpotsPage() {
     try {
       const result = await getSpot({ data: { spotId: spot.spot_id } });
       setEditingSpotMedia(result.media ?? []);
+      setEditingSpotAttributes(
+        (result.attributes ?? []).map((attribute) => {
+          const definition = attributeMenu.find(
+            (menuAttribute) => menuAttribute.attribute_id === attribute.attribute_id,
+          );
+
+          return {
+            spot_attribute_id: attribute.spot_attribute_id,
+            decision:
+              attribute.attribute_id !== null ? "approve_existing" : "approve_new",
+            can_approve_new: attribute.attribute_id === null,
+            attribute_id: attribute.attribute_id === null ? "" : String(attribute.attribute_id),
+            name: attribute.attribute_name ?? attribute.submitted_name ?? "",
+            attribute_type: attribute.attribute_type,
+            allowed_values_text:
+              definition?.allowed_values.join(", ") ??
+              attribute.submitted_allowed_values.join(", "),
+            number_unit: attribute.number_unit ?? "",
+            min_value: attribute.min_value === null ? "" : String(attribute.min_value),
+            max_value: attribute.max_value === null ? "" : String(attribute.max_value),
+            help_text: "",
+            value: attribute.value,
+            notes: attribute.notes ?? attribute.submitted_notes ?? "",
+            rejection_reason: attribute.moderation_reason ?? "",
+            moderation_status: attribute.moderation_status,
+          };
+        }),
+      );
     } catch {
       setEditingSpotMedia([]);
+      setEditingSpotAttributes([]);
     }
   };
 
@@ -248,6 +364,99 @@ function AllSpotsPage() {
     } finally {
       setDeletingMedia(false);
       setMediaDeleteTarget(null);
+    }
+  };
+
+  const handleSaveAndApprove = async () => {
+    if (!editingSpot) {
+      return;
+    }
+
+    try {
+      setPageError("");
+      setActionMessage("");
+      await updateSpot({
+        data: {
+          spotId: editingSpot.spot_id,
+          spot_name: editForm.spot_name,
+          spot_type: editForm.spot_type,
+          address: editForm.address,
+          latitude: editForm.latitude,
+          longitude: editForm.longitude,
+          short_description: editForm.short_description,
+          status: "active",
+          adminUserId: user?.userId,
+          attributeReviews: editingSpotAttributes.map((attribute) => ({
+            spot_attribute_id: attribute.spot_attribute_id,
+            decision: attribute.decision,
+            attribute_id:
+              attribute.decision === "approve_existing" && attribute.attribute_id
+                ? Number(attribute.attribute_id)
+                : undefined,
+            name: attribute.decision === "approve_new" ? attribute.name : undefined,
+            attribute_type:
+              attribute.decision === "approve_new"
+                ? attribute.attribute_type
+                : undefined,
+            allowed_values:
+              attribute.decision === "approve_new"
+                ? attribute.allowed_values_text
+                    .split(",")
+                    .map((value) => value.trim())
+                    .filter((value) => value.length > 0)
+                : [],
+            number_unit:
+              attribute.decision === "approve_new"
+                ? attribute.number_unit
+                : undefined,
+            min_value:
+              attribute.decision === "approve_new" ? attribute.min_value : undefined,
+            max_value:
+              attribute.decision === "approve_new" ? attribute.max_value : undefined,
+            help_text:
+              attribute.decision === "approve_new" ? attribute.help_text : undefined,
+            value: attribute.value,
+            notes: attribute.notes,
+            rejection_reason:
+              attribute.decision === "reject"
+                ? attribute.rejection_reason
+                : undefined,
+          })),
+        },
+      });
+      setActionMessage("Spot saved and approved successfully.");
+      setEditingSpot(null);
+      setEditingSpotAttributes([]);
+      await loadSpots();
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not save the spot changes."),
+      );
+    }
+  };
+
+  const handleRejectEditingSpot = async () => {
+    if (!editingSpot) {
+      return;
+    }
+
+    try {
+      setPageError("");
+      setActionMessage("");
+      await updateAdminSpotStatuses({
+        data: {
+          spotIds: [editingSpot.spot_id],
+          status: "inactive",
+        },
+      });
+      setActionMessage("Spot rejected successfully.");
+      setEditingSpot(null);
+      setEditingSpotAttributes([]);
+      await loadSpots();
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not reject the spot."),
+      );
     }
   };
 
@@ -375,11 +584,13 @@ function AllSpotsPage() {
                                 <Eye className="h-3.5 w-3.5" />
                               </Link>
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg" title="Edit" onClick={() => openEdit(spot)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
+                            {spot.status !== "pending" ? (
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg" title="Edit" onClick={() => openEdit(spot)}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                            ) : null}
                             {spot.status !== "active" ? (
-                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" title={spot.status === "pending" ? "Approve Spot" : "Mark Active"} onClick={() => handleStatusChange(spot.spot_id, "active")}>
+                              <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" title={spot.status === "pending" ? "Review & Approve" : "Mark Active"} onClick={() => spot.status === "pending" ? openEdit(spot) : handleStatusChange(spot.spot_id, "active")}>
                                 <CheckCircle2 className="h-3.5 w-3.5" />
                               </Button>
                             ) : null}
@@ -406,12 +617,15 @@ function AllSpotsPage() {
           if (!open) {
             setEditingSpot(null);
             setEditingSpotMedia([]);
+            setEditingSpotAttributes([]);
           }
         }}
       >
         <SheetContent className="sm:max-w-lg overflow-y-auto">
           <SheetHeader>
-            <SheetTitle className="font-display">Edit Spot</SheetTitle>
+            <SheetTitle className="font-display">
+              {editingSpot?.status === "pending" ? "Edit Before Approving" : "Edit Spot"}
+            </SheetTitle>
           </SheetHeader>
           {editingSpot && (
             <div className="mt-6 space-y-4">
@@ -455,6 +669,275 @@ function AllSpotsPage() {
                 <label className="text-sm font-medium text-foreground">Description</label>
                 <Textarea value={editForm.short_description} onChange={(event) => setEditForm((form) => ({ ...form, short_description: event.target.value }))} className="mt-1 rounded-xl" rows={3} />
               </div>
+              {editingSpot.status === "pending" ? (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-sm font-medium text-foreground">Submitted Attributes</label>
+                    <p className="text-xs text-muted-foreground">
+                      Review each attribute before approving the spot.
+                    </p>
+                  </div>
+                  {editingSpotAttributes.length > 0 ? (
+                    <div className="space-y-3">
+                      {editingSpotAttributes.map((attribute, index) => {
+                        const selectedDefinition = attributeMenu.find(
+                          (menuAttribute) =>
+                            String(menuAttribute.attribute_id) === attribute.attribute_id,
+                        );
+
+                        return (
+                          <div key={attribute.spot_attribute_id} className="rounded-2xl border border-border bg-card p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-foreground">
+                                  {attribute.name || "Pending custom attribute"}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  Current value: {attribute.value}
+                                  {attribute.notes ? ` • ${attribute.notes}` : ""}
+                                </p>
+                              </div>
+                              <StatusBadge status={attribute.moderation_status === "pending" ? "pending" : attribute.moderation_status === "rejected" ? "inactive" : "active"} className="text-[10px]" />
+                            </div>
+
+                            <div>
+                              <label className="mb-1 block text-xs font-medium text-muted-foreground">Decision</label>
+                              <Select
+                                value={attribute.decision}
+                                onValueChange={(value) =>
+                                  setEditingSpotAttributes((current) =>
+                                    current.map((currentAttribute, currentIndex) =>
+                                      currentIndex === index
+                                        ? {
+                                            ...currentAttribute,
+                                            decision:
+                                              value === "approve_new" &&
+                                              !currentAttribute.can_approve_new
+                                                ? "approve_existing"
+                                                : value as EditableAttributeReview["decision"],
+                                          }
+                                        : currentAttribute,
+                                    ),
+                                  )
+                                }
+                              >
+                                <SelectTrigger className="h-10 rounded-xl">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="approve_existing">Map to Existing Attribute</SelectItem>
+                                  {attribute.can_approve_new ? (
+                                    <SelectItem value="approve_new">Approve as New Attribute</SelectItem>
+                                  ) : null}
+                                  <SelectItem value="reject">Reject Attribute</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+
+                            {attribute.decision === "approve_existing" ? (
+                              <div className="space-y-3">
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Existing Attribute</label>
+                                  <Select
+                                    value={attribute.attribute_id}
+                                    onValueChange={(value) =>
+                                      setEditingSpotAttributes((current) =>
+                                        current.map((currentAttribute, currentIndex) =>
+                                          currentIndex === index
+                                            ? {
+                                                ...currentAttribute,
+                                                attribute_id: value,
+                                                name:
+                                                  attributeMenu.find(
+                                                    (menuAttribute) =>
+                                                      String(menuAttribute.attribute_id) === value,
+                                                  )?.name ?? currentAttribute.name,
+                                                attribute_type:
+                                                  attributeMenu.find(
+                                                    (menuAttribute) =>
+                                                      String(menuAttribute.attribute_id) === value,
+                                                  )?.attribute_type ??
+                                                  currentAttribute.attribute_type,
+                                                allowed_values_text:
+                                                  attributeMenu
+                                                    .find(
+                                                      (menuAttribute) =>
+                                                        String(menuAttribute.attribute_id) === value,
+                                                    )
+                                                    ?.allowed_values.join(", ") ??
+                                                  "",
+                                                value: "",
+                                              }
+                                            : currentAttribute,
+                                        ),
+                                      )
+                                    }
+                                  >
+                                    <SelectTrigger className="h-10 rounded-xl">
+                                      <SelectValue placeholder="Choose an approved attribute" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {attributeMenu.map((menuAttribute) => (
+                                        <SelectItem
+                                          key={menuAttribute.attribute_id}
+                                          value={String(menuAttribute.attribute_id)}
+                                        >
+                                          {menuAttribute.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Value</label>
+                                  {renderAttributeValueInput({
+                                    attribute: selectedDefinition,
+                                    attributeType:
+                                      selectedDefinition?.attribute_type ??
+                                      attribute.attribute_type,
+                                    allowedValuesText: attribute.allowed_values_text,
+                                    value: attribute.value,
+                                    onChange: (value) =>
+                                      setEditingSpotAttributes((current) =>
+                                        current.map((currentAttribute, currentIndex) =>
+                                          currentIndex === index
+                                            ? { ...currentAttribute, value }
+                                            : currentAttribute,
+                                        ),
+                                      ),
+                                  })}
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Notes</label>
+                                  <Input
+                                    value={attribute.notes}
+                                    onChange={(event) =>
+                                      setEditingSpotAttributes((current) =>
+                                        current.map((currentAttribute, currentIndex) =>
+                                          currentIndex === index
+                                            ? { ...currentAttribute, notes: event.target.value }
+                                            : currentAttribute,
+                                        ),
+                                      )
+                                    }
+                                    className="h-10 rounded-xl"
+                                    placeholder="Optional moderation note"
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {attribute.decision === "approve_new" ? (
+                              <div className="space-y-3">
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Name</label>
+                                    <Input value={attribute.name} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, name: event.target.value } : currentAttribute))} className="h-10 rounded-xl" />
+                                  </div>
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Type</label>
+                                    <Select
+                                      value={attribute.attribute_type}
+                                      onValueChange={(value) =>
+                                        setEditingSpotAttributes((current) =>
+                                          current.map((currentAttribute, currentIndex) =>
+                                            currentIndex === index
+                                              ? {
+                                                  ...currentAttribute,
+                                                  attribute_type:
+                                                    value as EditableAttributeReview["attribute_type"],
+                                                  allowed_values_text:
+                                                    value === "boolean"
+                                                      ? "Yes, No"
+                                                      : value === "single_choice"
+                                                        ? currentAttribute.allowed_values_text
+                                                        : "",
+                                                  value: "",
+                                                }
+                                              : currentAttribute,
+                                          ),
+                                        )
+                                      }
+                                    >
+                                      <SelectTrigger className="h-10 rounded-xl">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {ATTRIBUTE_TYPE_OPTIONS.map((option) => (
+                                          <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                </div>
+                                {attribute.attribute_type === "single_choice" ? (
+                                  <div>
+                                    <label className="mb-1 block text-xs font-medium text-muted-foreground">Allowed Values</label>
+                                    <Input value={attribute.allowed_values_text} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, allowed_values_text: event.target.value } : currentAttribute))} className="h-10 rounded-xl" placeholder="Comma-separated values" />
+                                  </div>
+                                ) : null}
+                                {attribute.attribute_type === "number" ? (
+                                  <div className="grid gap-3 sm:grid-cols-3">
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Unit</label>
+                                      <Input value={attribute.number_unit} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, number_unit: event.target.value } : currentAttribute))} className="h-10 rounded-xl" />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Min</label>
+                                      <Input type="number" value={attribute.min_value} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, min_value: event.target.value } : currentAttribute))} className="h-10 rounded-xl" />
+                                    </div>
+                                    <div>
+                                      <label className="mb-1 block text-xs font-medium text-muted-foreground">Max</label>
+                                      <Input type="number" value={attribute.max_value} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, max_value: event.target.value } : currentAttribute))} className="h-10 rounded-xl" />
+                                    </div>
+                                  </div>
+                                ) : null}
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Value</label>
+                                  {renderAttributeValueInput({
+                                    attributeType: attribute.attribute_type,
+                                    allowedValuesText: attribute.allowed_values_text,
+                                    value: attribute.value,
+                                    onChange: (value) =>
+                                      setEditingSpotAttributes((current) =>
+                                        current.map((currentAttribute, currentIndex) =>
+                                          currentIndex === index
+                                            ? { ...currentAttribute, value }
+                                            : currentAttribute,
+                                        ),
+                                      ),
+                                  })}
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Help Text</label>
+                                  <Input value={attribute.help_text} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, help_text: event.target.value } : currentAttribute))} className="h-10 rounded-xl" placeholder="Optional guidance for future contributors" />
+                                </div>
+                                <div>
+                                  <label className="mb-1 block text-xs font-medium text-muted-foreground">Notes</label>
+                                  <Input value={attribute.notes} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, notes: event.target.value } : currentAttribute))} className="h-10 rounded-xl" placeholder="Optional note saved on the spot" />
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {attribute.decision === "reject" ? (
+                              <div>
+                                <label className="mb-1 block text-xs font-medium text-muted-foreground">Rejection Reason</label>
+                                <Textarea value={attribute.rejection_reason} onChange={(event) => setEditingSpotAttributes((current) => current.map((currentAttribute, currentIndex) => currentIndex === index ? { ...currentAttribute, rejection_reason: event.target.value } : currentAttribute))} className="rounded-xl" rows={2} placeholder="Explain why this attribute should be removed" />
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                      No attributes were submitted for this spot.
+                    </div>
+                  )}
+                </div>
+              ) : null}
               <div>
                 <div className="mb-2">
                   <label className="text-sm font-medium text-foreground">Photos</label>
@@ -490,9 +973,24 @@ function AllSpotsPage() {
                 )}
               </div>
               <div className="flex gap-2 pt-4">
-                <Button className="flex-1 rounded-xl" onClick={handleSaveEdit}>
-                  Save Changes
-                </Button>
+                {editingSpot.status === "pending" ? (
+                  <>
+                    <Button className="flex-1 rounded-xl" onClick={handleSaveAndApprove}>
+                      <Check className="h-4 w-4 mr-1.5" /> Save & Approve
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      className="rounded-xl"
+                      onClick={handleRejectEditingSpot}
+                    >
+                      <X className="h-4 w-4 mr-1.5" /> Reject
+                    </Button>
+                  </>
+                ) : (
+                  <Button className="flex-1 rounded-xl" onClick={handleSaveEdit}>
+                    Save Changes
+                  </Button>
+                )}
                 <Button variant="outline" className="rounded-xl" onClick={() => setEditingSpot(null)}>
                   Cancel
                 </Button>

@@ -17,7 +17,7 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
-import { Check, X, Eye, Pencil, Shield } from "lucide-react";
+import { Check, X, Eye, Shield } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   ATTRIBUTE_TYPE_OPTIONS,
@@ -60,6 +60,7 @@ function getInitials(name: string) {
 type EditableAttributeReview = {
   spot_attribute_id: number;
   decision: "approve_existing" | "approve_new" | "reject";
+  can_approve_new: boolean;
   attribute_id: string;
   name: string;
   attribute_type: (typeof ATTRIBUTE_TYPE_OPTIONS)[number]["value"];
@@ -233,6 +234,7 @@ function PendingSpotsPage() {
             spot_attribute_id: attribute.spot_attribute_id,
             decision:
               attribute.attribute_id !== null ? "approve_existing" : "approve_new",
+            can_approve_new: attribute.attribute_id === null,
             attribute_id: attribute.attribute_id === null ? "" : String(attribute.attribute_id),
             name: attribute.attribute_name ?? attribute.submitted_name ?? "",
             attribute_type: attribute.attribute_type,
@@ -405,6 +407,31 @@ function PendingSpotsPage() {
     }
   };
 
+  const handleRejectEditingSpot = async () => {
+    if (!editingSpot) {
+      return;
+    }
+
+    try {
+      setPageError("");
+      setActionMessage("");
+      await updateAdminSpotStatuses({
+        data: {
+          spotIds: [editingSpot.spot_id],
+          status: "inactive",
+        },
+      });
+      setActionMessage("Spot rejected successfully.");
+      setEditingSpot(null);
+      setEditingSpotAttributes([]);
+      await loadPendingSpots();
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not reject the spot."),
+      );
+    }
+  };
+
   return (
     <>
       <FloatingRightNav />
@@ -520,9 +547,6 @@ function PendingSpotsPage() {
                                 <Eye className="h-3.5 w-3.5" />
                               </Link>
                             </Button>
-                            <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg" title="Quick Edit" onClick={() => openEdit(spot)}>
-                              <Pencil className="h-3.5 w-3.5" />
-                            </Button>
                             <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-lg text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50" title="Review & Approve" onClick={() => openEdit(spot)}>
                               <Check className="h-3.5 w-3.5" />
                             </Button>
@@ -633,14 +657,17 @@ function PendingSpotsPage() {
                               onValueChange={(value) =>
                                 setEditingSpotAttributes((current) =>
                                   current.map((currentAttribute, currentIndex) =>
-                                    currentIndex === index
-                                      ? {
-                                          ...currentAttribute,
-                                          decision:
-                                            value as EditableAttributeReview["decision"],
-                                        }
-                                      : currentAttribute,
-                                  ),
+                                      currentIndex === index
+                                        ? {
+                                            ...currentAttribute,
+                                            decision:
+                                              value === "approve_new" &&
+                                              !currentAttribute.can_approve_new
+                                                ? "approve_existing"
+                                                : value as EditableAttributeReview["decision"],
+                                          }
+                                        : currentAttribute,
+                                    ),
                                 )
                               }
                             >
@@ -649,7 +676,9 @@ function PendingSpotsPage() {
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="approve_existing">Map to Existing Attribute</SelectItem>
-                                <SelectItem value="approve_new">Approve as New Attribute</SelectItem>
+                                {attribute.can_approve_new ? (
+                                  <SelectItem value="approve_new">Approve as New Attribute</SelectItem>
+                                ) : null}
                                 <SelectItem value="reject">Reject Attribute</SelectItem>
                               </SelectContent>
                             </Select>
@@ -1004,6 +1033,13 @@ function PendingSpotsPage() {
               <div className="flex gap-2 pt-4">
                 <Button className="flex-1 rounded-xl" onClick={handleSaveAndApprove}>
                   <Check className="h-4 w-4 mr-1.5" /> Save & Approve
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="rounded-xl"
+                  onClick={handleRejectEditingSpot}
+                >
+                  <X className="h-4 w-4 mr-1.5" /> Reject
                 </Button>
                 <Button
                   variant="outline"
