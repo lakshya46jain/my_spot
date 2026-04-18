@@ -5,8 +5,21 @@ import { SectionCard } from "@/components/SectionCard";
 import { importGoogleMapsLibrary } from "@/lib/google-maps";
 import { getGoogleMapsEmbedUrl } from "@/lib/google-maps-urls";
 import { SPOT_TYPES } from "@/lib/spot-types";
+import {
+  ATTRIBUTE_TYPE_OPTIONS,
+  getAttributeTypeLabel,
+  parseDelimitedValues,
+} from "@/lib/attributes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { FileUpload } from "@/components/FileUpload";
 import {
   PlusCircle,
@@ -15,12 +28,11 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  CheckCircle2,
-  AlertCircle,
   Loader2,
   X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   OperatingHoursSection,
   createDefaultHours,
@@ -29,8 +41,10 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { prepareImageUpload } from "@/lib/image-upload";
+import { getAttributeMenu } from "@/server/attributes";
 import { uploadSpotMedia } from "@/server/media";
 import { createSpot } from "@/server/spots";
+import type { AttributeDefinition } from "@/types/api";
 
 export interface CreateSpotData {
   spot_name: string;
@@ -41,6 +55,21 @@ export interface CreateSpotData {
   longitude: string;
   status: "active" | "inactive" | "pending";
 }
+
+type SelectedAttributeDraft = {
+  attribute_id: number;
+  value: string;
+  notes: string;
+};
+
+type CustomAttributeDraft = {
+  name: string;
+  attribute_type: (typeof ATTRIBUTE_TYPE_OPTIONS)[number]["value"];
+  suggested_allowed_values: string[];
+  suggested_allowed_values_text: string;
+  value: string;
+  notes: string;
+};
 
 export const Route = createFileRoute("/add-spot")({
   component: AddSpotPage,
@@ -156,6 +185,60 @@ function getOperatingHoursError(hours: DayHours[]) {
   return null;
 }
 
+function renderAttributeValueInput(params: {
+  attribute?: AttributeDefinition;
+  attributeType?: (typeof ATTRIBUTE_TYPE_OPTIONS)[number]["value"];
+  allowedValues?: string[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}) {
+  const attributeType = params.attribute?.attribute_type ?? params.attributeType;
+  const allowedValues =
+    params.allowedValues ?? params.attribute?.allowed_values ?? [];
+
+  if (!attributeType) {
+    return (
+      <Input
+        value={params.value}
+        onChange={(event) => params.onChange(event.target.value)}
+        placeholder={params.placeholder ?? "Enter a value"}
+        className="h-11 rounded-xl"
+      />
+    );
+  }
+
+  if (attributeType === "boolean" || attributeType === "single_choice") {
+    const options =
+      attributeType === "boolean" ? ["Yes", "No"] : allowedValues;
+
+    return (
+      <Select value={params.value} onValueChange={params.onChange}>
+        <SelectTrigger className="h-11 rounded-xl">
+          <SelectValue placeholder="Choose a value" />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((option) => (
+            <SelectItem key={option} value={option}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    );
+  }
+
+  return (
+    <Input
+      type={attributeType === "number" ? "number" : "text"}
+      value={params.value}
+      onChange={(event) => params.onChange(event.target.value)}
+      placeholder={params.placeholder ?? "Enter a value"}
+      className="h-11 rounded-xl"
+    />
+  );
+}
+
 function AddSpotPage() {
   const { user, isLoggedIn } = useAuth();
 
@@ -170,7 +253,6 @@ function AddSpotPage() {
   });
 
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [locationError, setLocationError] = useState("");
   const [locationLoading, setLocationLoading] = useState(false);
@@ -187,7 +269,68 @@ function AddSpotPage() {
     null,
     null,
   ]);
+  const [attributeMenu, setAttributeMenu] = useState<AttributeDefinition[]>([]);
+  const [attributeLoading, setAttributeLoading] = useState(true);
+  const [attributeError, setAttributeError] = useState("");
+  const [selectedAttributes, setSelectedAttributes] = useState<
+    SelectedAttributeDraft[]
+  >([]);
+  const [editingSelectedAttributeIndex, setEditingSelectedAttributeIndex] =
+    useState<number | null>(null);
+  const [customAttributes, setCustomAttributes] = useState<CustomAttributeDraft[]>(
+    [],
+  );
+  const [editingCustomAttributeIndex, setEditingCustomAttributeIndex] = useState<
+    number | null
+  >(null);
+  const [newAttributeId, setNewAttributeId] = useState("");
+  const [newAttributeValue, setNewAttributeValue] = useState("");
+  const [newAttributeNotes, setNewAttributeNotes] = useState("");
+  const [customAttributeDraft, setCustomAttributeDraft] =
+    useState<CustomAttributeDraft>({
+      name: "",
+      attribute_type: "unsure",
+      suggested_allowed_values: [],
+      suggested_allowed_values_text: "",
+      value: "",
+      notes: "",
+    });
   const sessionTokenRef = useRef<unknown>(null);
+  const availableAttributes = attributeMenu.filter(
+    (attribute) =>
+      attribute.is_active &&
+      !selectedAttributes.some(
+        (selected, index) =>
+          selected.attribute_id === attribute.attribute_id &&
+          index !== editingSelectedAttributeIndex,
+      ),
+  );
+  const selectedAttributeDefinition = attributeMenu.find(
+    (attribute) => String(attribute.attribute_id) === newAttributeId,
+  );
+  const customAttributeSuggestions = customAttributeDraft.name.trim()
+    ? attributeMenu.filter((attribute) =>
+        attribute.name
+          .toLowerCase()
+          .includes(customAttributeDraft.name.trim().toLowerCase()),
+      )
+    : [];
+  const customDraftAllowedValues =
+    customAttributeDraft.attribute_type === "single_choice"
+      ? parseDelimitedValues(customAttributeDraft.suggested_allowed_values_text)
+      : [];
+
+  const resetCustomAttributeDraft = () => {
+    setCustomAttributeDraft({
+      name: "",
+      attribute_type: "unsure",
+      suggested_allowed_values: [],
+      suggested_allowed_values_text: "",
+      value: "",
+      notes: "",
+    });
+    setEditingCustomAttributeIndex(null);
+  };
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -198,6 +341,34 @@ function AddSpotPage() {
       [name]: value,
     }));
   };
+
+  useEffect(() => {
+    async function loadAttributes() {
+      try {
+        setAttributeLoading(true);
+        setAttributeError("");
+        const attributes = await getAttributeMenu();
+
+        if (!Array.isArray(attributes)) {
+          throw new Error("The attribute list returned an unexpected response.");
+        }
+
+        setAttributeMenu(attributes);
+      } catch (loadError) {
+        setAttributeMenu([]);
+        setAttributeError(
+          getUserFriendlyErrorMessage(
+            loadError,
+            "We couldn't load the available attributes.",
+          ),
+        );
+      } finally {
+        setAttributeLoading(false);
+      }
+    }
+
+    void loadAttributes();
+  }, []);
 
   useEffect(() => {
     const inputValue = formData.address.trim();
@@ -396,11 +567,118 @@ function AddSpotPage() {
     setShowSuggestions(false);
   };
 
+  const handleAddExistingAttribute = () => {
+    if (!selectedAttributeDefinition) {
+      setError("Choose an approved attribute before adding it.");
+      return;
+    }
+
+    if (!newAttributeValue.trim()) {
+      setError(`Choose a value for ${selectedAttributeDefinition.name}.`);
+      return;
+    }
+
+    const nextAttribute = {
+      attribute_id: selectedAttributeDefinition.attribute_id,
+      value: newAttributeValue.trim(),
+      notes: newAttributeNotes.trim(),
+    };
+
+    setSelectedAttributes((current) => {
+      if (editingSelectedAttributeIndex === null) {
+        return [...current, nextAttribute];
+      }
+
+      return current.map((attribute, index) =>
+        index === editingSelectedAttributeIndex ? nextAttribute : attribute,
+      );
+    });
+    setNewAttributeId("");
+    setNewAttributeValue("");
+    setNewAttributeNotes("");
+    setEditingSelectedAttributeIndex(null);
+    setError("");
+  };
+
+  const resetSelectedAttributeDraft = () => {
+    setNewAttributeId("");
+    setNewAttributeValue("");
+    setNewAttributeNotes("");
+    setEditingSelectedAttributeIndex(null);
+  };
+
+  const startEditingSelectedAttribute = (index: number) => {
+    setEditingSelectedAttributeIndex(index);
+    setError("");
+  };
+
+  useEffect(() => {
+    if (editingSelectedAttributeIndex === null) {
+      return;
+    }
+
+    const attribute = selectedAttributes[editingSelectedAttributeIndex];
+    if (!attribute) {
+      resetSelectedAttributeDraft();
+      return;
+    }
+
+    setNewAttributeId(String(attribute.attribute_id));
+    setNewAttributeValue(attribute.value);
+    setNewAttributeNotes(attribute.notes);
+  }, [editingSelectedAttributeIndex, selectedAttributes]);
+
+  const handleAddCustomAttribute = () => {
+    if (!customAttributeDraft.name.trim() || !customAttributeDraft.value.trim()) {
+      setError("Custom attributes need a name and value.");
+      return;
+    }
+
+    if (
+      customAttributeDraft.attribute_type === "single_choice" &&
+      customDraftAllowedValues.length === 0
+    ) {
+      setError("Single-choice custom attributes need suggested options.");
+      return;
+    }
+
+    if (
+      customAttributeDraft.attribute_type === "single_choice" &&
+      !customDraftAllowedValues.includes(customAttributeDraft.value.trim())
+    ) {
+      setError("Pick a value from the suggested single-choice options.");
+      return;
+    }
+
+    const nextAttribute = {
+      name: customAttributeDraft.name.trim(),
+      attribute_type: customAttributeDraft.attribute_type,
+      suggested_allowed_values: customDraftAllowedValues,
+      suggested_allowed_values_text:
+        customAttributeDraft.attribute_type === "single_choice"
+          ? customDraftAllowedValues.join(", ")
+          : "",
+      value: customAttributeDraft.value.trim(),
+      notes: customAttributeDraft.notes.trim(),
+    };
+
+    setCustomAttributes((current) => {
+      if (editingCustomAttributeIndex === null) {
+        return [...current, nextAttribute];
+      }
+
+      return current.map((attribute, index) =>
+        index === editingCustomAttributeIndex ? nextAttribute : attribute,
+      );
+    });
+    resetCustomAttributeDraft();
+    setError("");
+  };
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setMessage("");
 
     try {
       if (!isLoggedIn || !user) {
@@ -431,6 +709,8 @@ function AddSpotPage() {
           userId: user.userId,
           ...formData,
           operatingHours,
+          selectedAttributes,
+          customAttributes,
         },
       });
 
@@ -458,7 +738,7 @@ function AddSpotPage() {
           }
         }
 
-        setMessage(successMessage);
+        toast.success(successMessage);
         setFormData({
           spot_name: "",
           spot_type: "",
@@ -470,10 +750,18 @@ function AddSpotPage() {
         });
         setOperatingHours(createDefaultHours());
         setPhotoFiles([null, null, null, null, null]);
+        setSelectedAttributes([]);
+        resetSelectedAttributeDraft();
+        setCustomAttributes([]);
+        setEditingCustomAttributeIndex(null);
+        resetCustomAttributeDraft();
       }
     } catch (err) {
-      setError(
-        getUserFriendlyErrorMessage(err, "Something went wrong while adding the spot."),
+      toast.error(
+        getUserFriendlyErrorMessage(
+          err,
+          "Something went wrong while adding the spot.",
+        ),
       );
     } finally {
       setLoading(false);
@@ -581,13 +869,13 @@ function AddSpotPage() {
                   >
                     Description
                   </label>
-                  <textarea
+                  <Textarea
                     id="short_description"
                     name="short_description"
                     value={formData.short_description}
                     onChange={handleInputChange}
                     rows={3}
-                    className="w-full rounded-xl border border-input bg-transparent px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    className="rounded-xl"
                     placeholder="Describe the atmosphere, noise level, amenities, power outlets, seating..."
                   />
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -749,10 +1037,410 @@ function AddSpotPage() {
               </div>
             </SectionCard>
 
-            {/* ─── Section 3: Media ─── */}
+            {/* ─── Section 3: Attributes ─── */}
+            <SectionCard
+              title="Attributes"
+              description="Add the amenities and details that matter most for choosing this spot."
+            >
+              <div className="space-y-5">
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Approved Attributes
+                  </label>
+                  {attributeLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      Loading attributes...
+                    </p>
+                  ) : (
+                    <div className="space-y-3 rounded-2xl border border-border bg-background/80 p-4">
+                      <div className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Attribute
+                          </label>
+                          <Select
+                            value={newAttributeId}
+                            onValueChange={(value) => {
+                              const nextDefinition = attributeMenu.find(
+                                (attribute) =>
+                                  String(attribute.attribute_id) === value,
+                              );
+                              setNewAttributeId(value);
+                              setNewAttributeValue(
+                                nextDefinition?.allowed_values.includes(
+                                  newAttributeValue,
+                                )
+                                  ? newAttributeValue
+                                  : "",
+                              );
+                            }}
+                          >
+                            <SelectTrigger className="h-11 rounded-xl">
+                              <SelectValue placeholder="Choose an approved attribute" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableAttributes.map((attribute) => (
+                                <SelectItem
+                                  key={attribute.attribute_id}
+                                  value={String(attribute.attribute_id)}
+                                >
+                                  {attribute.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Value
+                          </label>
+                          {renderAttributeValueInput({
+                            attribute: selectedAttributeDefinition,
+                            value: newAttributeValue,
+                            onChange: setNewAttributeValue,
+                          })}
+                        </div>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Notes
+                        </label>
+                        <Input
+                          value={newAttributeNotes}
+                          onChange={(event) => setNewAttributeNotes(event.target.value)}
+                          placeholder="Optional detail for this spot"
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                      {selectedAttributeDefinition?.help_text ? (
+                        <p className="text-xs text-muted-foreground">
+                          {selectedAttributeDefinition.help_text}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-3">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={handleAddExistingAttribute}
+                          disabled={!selectedAttributeDefinition}
+                        >
+                          {editingSelectedAttributeIndex === null
+                            ? "Add Approved Attribute"
+                            : "Update Approved Attribute"}
+                        </Button>
+                        {editingSelectedAttributeIndex !== null ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="rounded-xl"
+                            onClick={resetSelectedAttributeDraft}
+                          >
+                            Cancel Editing
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedAttributes.length > 0 ? (
+                  <div className="space-y-2">
+                    {selectedAttributes.map((attribute, index) => {
+                      const definition = attributeMenu.find(
+                        (menuAttribute) =>
+                          menuAttribute.attribute_id === attribute.attribute_id,
+                      );
+
+                      if (!definition) {
+                        return null;
+                      }
+
+                      return (
+                        <div
+                          key={`${attribute.attribute_id}-${index}`}
+                          className="rounded-2xl border border-border bg-card p-4"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-foreground">
+                                {definition.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {attribute.value}
+                                {attribute.notes ? ` • ${attribute.notes}` : ""}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-foreground hover:underline"
+                                onClick={() => startEditingSelectedAttribute(index)}
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                className="text-xs font-medium text-destructive hover:underline"
+                                onClick={() =>
+                                  setSelectedAttributes((current) =>
+                                    current.filter((_, currentIndex) => currentIndex !== index),
+                                  )
+                                }
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Suggest a Custom Attribute
+                  </label>
+                  <div className="space-y-3 rounded-2xl border border-dashed border-warm-300 bg-warm-50/60 p-4">
+                    <div className="grid gap-3 md:grid-cols-[1.2fr_1fr]">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Attribute Name
+                        </label>
+                        <Input
+                          value={customAttributeDraft.name}
+                          onChange={(event) =>
+                            setCustomAttributeDraft((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g., Reservation Required"
+                          className="h-11 rounded-xl"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                          Suggested Type
+                        </label>
+                        <Select
+                          value={customAttributeDraft.attribute_type}
+                          onValueChange={(value) =>
+                            setCustomAttributeDraft((current) => ({
+                              ...current,
+                              attribute_type:
+                                value as CustomAttributeDraft["attribute_type"],
+                              suggested_allowed_values:
+                                value === "single_choice"
+                                  ? current.suggested_allowed_values
+                                  : [],
+                              suggested_allowed_values_text:
+                                value === "single_choice"
+                                  ? current.suggested_allowed_values_text
+                                  : "",
+                              value: "",
+                            }))
+                          }
+                        >
+                          <SelectTrigger className="h-11 rounded-xl">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ATTRIBUTE_TYPE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    {customAttributeSuggestions.length > 0 ? (
+                      <div className="rounded-xl border border-border bg-card p-3">
+                        <p className="text-xs font-medium text-foreground">
+                          Similar approved attributes
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {customAttributeSuggestions.slice(0, 4).map((attribute) => (
+                            <button
+                              key={attribute.attribute_id}
+                              type="button"
+                              className="rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-foreground hover:border-primary hover:text-primary"
+                              onClick={() => {
+                                setNewAttributeId(String(attribute.attribute_id));
+                                setCustomAttributeDraft((current) => ({
+                                  ...current,
+                                  name: "",
+                                }));
+                              }}
+                            >
+                              Use {attribute.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    <div>
+                      {customAttributeDraft.attribute_type === "single_choice" ? (
+                        <div className="mb-3">
+                          <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                            Suggested Choices
+                          </label>
+                          <Input
+                            value={customAttributeDraft.suggested_allowed_values_text}
+                            onChange={(event) =>
+                              setCustomAttributeDraft((current) => ({
+                                ...current,
+                                suggested_allowed_values_text: event.target.value,
+                                suggested_allowed_values: parseDelimitedValues(
+                                  event.target.value,
+                                ),
+                                value: parseDelimitedValues(event.target.value).includes(
+                                  current.value,
+                                )
+                                  ? current.value
+                                  : "",
+                              }))
+                            }
+                            placeholder="Comma-separated choices, e.g., Silent, Moderate, Lively"
+                            className="h-11 rounded-xl"
+                          />
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            These are suggestions for the admin reviewer.
+                          </p>
+                        </div>
+                      ) : null}
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Value
+                      </label>
+                      {renderAttributeValueInput({
+                        attributeType: customAttributeDraft.attribute_type,
+                        allowedValues: customDraftAllowedValues,
+                        value: customAttributeDraft.value,
+                        onChange: (value) =>
+                          setCustomAttributeDraft((current) => ({
+                            ...current,
+                            value,
+                          })),
+                        placeholder: "Enter the value for this spot",
+                      })}
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-muted-foreground">
+                        Notes
+                      </label>
+                      <Input
+                        value={customAttributeDraft.notes}
+                        onChange={(event) =>
+                          setCustomAttributeDraft((current) => ({
+                            ...current,
+                            notes: event.target.value,
+                          }))
+                        }
+                        placeholder="Optional context for the admin reviewer"
+                        className="h-11 rounded-xl"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Custom attributes stay attached to this pending spot. An admin
+                      will review and standardize them before approval.
+                    </p>
+                    <div className="flex flex-wrap gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={handleAddCustomAttribute}
+                      >
+                        {editingCustomAttributeIndex === null
+                          ? "Add Custom Attribute"
+                          : "Update Custom Attribute"}
+                      </Button>
+                      {editingCustomAttributeIndex !== null ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          className="rounded-xl"
+                          onClick={resetCustomAttributeDraft}
+                        >
+                          Cancel Editing
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                {customAttributes.length > 0 ? (
+                  <div className="space-y-2">
+                    {customAttributes.map((attribute, index) => (
+                      <div
+                        key={`${attribute.name}-${index}`}
+                        className="rounded-2xl border border-warm-200 bg-warm-50 p-4"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-foreground">
+                              {attribute.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {getAttributeTypeLabel(attribute.attribute_type)} •{" "}
+                              {attribute.value}
+                              {attribute.attribute_type === "single_choice" &&
+                              attribute.suggested_allowed_values.length > 0
+                                ? ` • Choices: ${attribute.suggested_allowed_values.join(", ")}`
+                                : ""}
+                              {attribute.notes ? ` • ${attribute.notes}` : ""}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-foreground hover:underline"
+                              onClick={() => {
+                                setCustomAttributeDraft(attribute);
+                                setEditingCustomAttributeIndex(index);
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs font-medium text-destructive hover:underline"
+                              onClick={() =>
+                                setCustomAttributes((current) =>
+                                  current.filter((_, currentIndex) => currentIndex !== index),
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {error ? (
+                  <p className="text-sm text-destructive">{error}</p>
+                ) : null}
+                {attributeError ? (
+                  <p className="text-sm text-destructive">{attributeError}</p>
+                ) : null}
+              </div>
+            </SectionCard>
+
+            {/* ─── Section 4: Operating Hours ─── */}
+            <OperatingHoursSection
+              hours={operatingHours}
+              onChange={setOperatingHours}
+            />
+
+            {/* ─── Section 5: Photos ─── */}
             <SectionCard
               title="Photos"
-              description="Add images to help others recognize this spot."
+              description="Add images after the details are in place so others can recognize the spot."
             >
               <div className="space-y-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -776,13 +1464,7 @@ function AddSpotPage() {
               </div>
             </SectionCard>
 
-            {/* ─── Section 4: Operating Hours ─── */}
-            <OperatingHoursSection
-              hours={operatingHours}
-              onChange={setOperatingHours}
-            />
-
-            {/* ─── Section 5: Advanced (collapsible) ─── */}
+            {/* ─── Section 6: Advanced (collapsible) ─── */}
             <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
               <button
                 type="button"
@@ -794,7 +1476,7 @@ function AddSpotPage() {
                     Advanced Details
                   </h3>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    Optional — parent location, attributes
+                    Optional extras for unusual spot setups
                   </p>
                 </div>
                 {showAdvanced ? (
@@ -826,64 +1508,9 @@ function AddSpotPage() {
                     </p>
                     {/* TODO: Add parent spot selector backed by spots search (parent_spot_id) */}
                   </div>
-
-                  {/* Attributes placeholder */}
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Attributes
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {[
-                        "WiFi",
-                        "Power Outlets",
-                        "Quiet",
-                        "Group-Friendly",
-                        "Food Available",
-                        "Outdoor Seating",
-                      ].map((attr) => (
-                        <span
-                          key={attr}
-                          className="px-3 py-1.5 rounded-full border border-warm-200 bg-warm-50 text-warm-400 text-xs font-medium cursor-not-allowed opacity-60"
-                        >
-                          {attr}
-                        </span>
-                      ))}
-                    </div>
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      Attribute selection coming in the next phase.
-                    </p>
-                    {/* TODO: Add attributes once backend wiring is implemented */}
-                  </div>
                 </div>
               )}
             </div>
-
-            {/* ─── Messages ─── */}
-            {message && (
-              <div className="flex items-start gap-3 p-4 rounded-xl border border-green-200 bg-green-50">
-                <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">
-                    {message}
-                  </p>
-                  <p className="text-xs text-green-600 mt-1">
-                    <Link
-                      to="/explore"
-                      className="underline hover:text-green-800"
-                    >
-                      View all spots →
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {error && (
-              <div className="flex items-start gap-3 p-4 rounded-xl border border-destructive/20 bg-destructive/5">
-                <AlertCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
-                <p className="text-sm font-medium text-destructive">{error}</p>
-              </div>
-            )}
 
             {/* ─── Submit area ─── */}
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sticky bottom-4">
@@ -907,8 +1534,11 @@ function AddSpotPage() {
                       status: "pending",
                     });
                     setError("");
-                    setMessage("");
                     setOperatingHours(createDefaultHours());
+                    setSelectedAttributes([]);
+                    setCustomAttributes([]);
+                    resetSelectedAttributeDraft();
+                    resetCustomAttributeDraft();
                   }}
                 >
                   Reset

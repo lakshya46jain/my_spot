@@ -1,6 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 import { z } from "zod";
+import type { PoolConnection } from "mysql2/promise";
+import {
+  type AttributeType,
+  attributeTypeSchema,
+  formatSpotAttributeDisplayLabel,
+  normalizeAllowedValues,
+  parseJsonArray,
+  validateAttributeValue,
+} from "@/lib/attribute-helpers";
+import type { SpotAttribute } from "@/types/api";
 import { db } from "./db";
 import { deleteFilesFromFirebaseStorage } from "./firebase-admin";
 
@@ -33,6 +43,36 @@ const dayHoursSchema = z.object({
   notes: z.string().max(255).optional().default(""),
 });
 
+const customAttributeInputSchema = z.object({
+  name: z.string().trim().min(1, "Attribute name is required."),
+  attribute_type: attributeTypeSchema,
+  value: z.string().trim().min(1, "Attribute value is required."),
+  notes: z.string().trim().max(255).optional().or(z.literal("")),
+  suggested_allowed_values: z.array(z.string().trim().min(1)).optional().default([]),
+});
+
+const selectedAttributeInputSchema = z.object({
+  attribute_id: z.number().int().positive(),
+  value: z.string().trim().min(1, "Attribute value is required."),
+  notes: z.string().trim().max(255).optional().or(z.literal("")),
+});
+
+const attributeReviewSchema = z.object({
+  spot_attribute_id: z.number().int().positive(),
+  decision: z.enum(["approve_existing", "approve_new", "reject"]),
+  attribute_id: z.number().int().positive().optional(),
+  name: z.string().trim().optional().or(z.literal("")),
+  attribute_type: attributeTypeSchema.optional(),
+  allowed_values: z.array(z.string().trim().min(1)).optional().default([]),
+  number_unit: z.string().trim().max(50).optional().or(z.literal("")),
+  min_value: z.string().trim().optional().or(z.literal("")),
+  max_value: z.string().trim().optional().or(z.literal("")),
+  help_text: z.string().trim().max(255).optional().or(z.literal("")),
+  value: z.string().trim().min(1, "Attribute value is required."),
+  notes: z.string().trim().max(255).optional().or(z.literal("")),
+  rejection_reason: z.string().trim().max(255).optional().or(z.literal("")),
+});
+
 const createSpotSchema = z.object({
   userId: z.number().int().positive(),
   spot_name: z.string().trim().min(1, "Spot name is required."),
@@ -43,6 +83,8 @@ const createSpotSchema = z.object({
   longitude: z.string().trim().min(1, "Location coordinates are required."),
   status: spotStatusSchema.default("pending"),
   operatingHours: z.array(dayHoursSchema).optional().default([]),
+  selectedAttributes: z.array(selectedAttributeInputSchema).optional().default([]),
+  customAttributes: z.array(customAttributeInputSchema).optional().default([]),
 });
 
 type CreateSpotInput = z.infer<typeof createSpotSchema>;
@@ -57,6 +99,8 @@ const updateSpotSchema = z.object({
   longitude: z.string().trim().optional().or(z.literal("")),
   status: spotStatusSchema.optional(),
   operatingHours: z.array(dayHoursSchema).optional(),
+  adminUserId: z.number().int().positive().optional(),
+  attributeReviews: z.array(attributeReviewSchema).optional(),
 });
 
 type UpdateSpotInput = z.infer<typeof updateSpotSchema>;
@@ -108,6 +152,7 @@ type SpotRow = RowDataPacket & {
   review_count: number;
   primary_media_url: string | null;
   media_count: number;
+  attribute_badges_raw?: string | null;
   distance_miles?: number | null;
   is_favorited?: 0 | 1 | boolean | null;
 };
@@ -143,6 +188,57 @@ type SpotMediaRow = RowDataPacket & {
   height: number | null;
   sort_order: number;
   is_primary: 0 | 1 | boolean;
+};
+
+type SpotAttributeRow = RowDataPacket & {
+  spot_attribute_id: number;
+  attribute_id: number | null;
+  attribute_name: string | null;
+  attribute_type: AttributeType | null;
+  allowed_values_json: string | null;
+  number_unit: string | null;
+  min_value: number | string | null;
+  max_value: number | string | null;
+  is_active: 0 | 1 | boolean | null;
+  value: string | null;
+  notes: string | null;
+  submitted_name: string | null;
+  submitted_type: AttributeType | null;
+  submitted_value: string | null;
+  submitted_notes: string | null;
+  submitted_allowed_values_json: string | null;
+  moderation_status: "approved" | "pending" | "rejected";
+  moderation_reason: string | null;
+  reviewed_at: string | null;
+  reviewed_by_user_id: number | null;
+};
+
+type AttributeDefinitionRow = RowDataPacket & {
+  attribute_id: number;
+  name: string;
+  attribute_type: AttributeType;
+  allowed_values_json: string | null;
+  number_unit: string | null;
+  min_value: number | string | null;
+  max_value: number | string | null;
+  help_text: string | null;
+  is_active: 0 | 1 | boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type CanonicalAttributeDefinition = {
+  attribute_id: number;
+  name: string;
+  attribute_type: AttributeType;
+  allowed_values: string[];
+  number_unit: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  help_text: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 function toMySqlTime(
@@ -293,6 +389,12 @@ function normalizeSpot(row: SpotRow) {
         : Number(row.distance_miles),
     media_count: Number(row.media_count ?? 0),
     is_favorited: Boolean(row.is_favorited),
+    attribute_badges: row.attribute_badges_raw
+      ? row.attribute_badges_raw
+          .split("||")
+          .map((badge) => badge.trim())
+          .filter((badge) => badge.length > 0)
+      : [],
   };
 }
 
@@ -306,6 +408,497 @@ function normalizeSpotMedia(row: SpotMediaRow) {
     sort_order: Number(row.sort_order),
     is_primary: Boolean(row.is_primary),
   };
+}
+
+function parseOptionalNumber(value?: string) {
+  if (!value || value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    throw new Error("Number limits must be valid numbers.");
+  }
+
+  return parsed;
+}
+
+function normalizeSpotAttribute(row: SpotAttributeRow): SpotAttribute {
+  const attributeType = row.attribute_type ?? row.submitted_type ?? "unsure";
+  const attributeName = row.attribute_name ?? row.submitted_name;
+  const value = row.value ?? row.submitted_value ?? "";
+
+  return {
+    spot_attribute_id: Number(row.spot_attribute_id),
+    attribute_id: row.attribute_id === null ? null : Number(row.attribute_id),
+    attribute_name: attributeName,
+    attribute_type: attributeType,
+    value,
+    notes: row.notes,
+    moderation_status: row.moderation_status,
+    moderation_reason: row.moderation_reason,
+    submitted_name: row.submitted_name,
+    submitted_type: row.submitted_type,
+    submitted_value: row.submitted_value,
+    submitted_notes: row.submitted_notes,
+    submitted_allowed_values:
+      row.submitted_type === null
+        ? []
+        : normalizeAllowedValues(
+            row.submitted_type,
+            parseJsonArray(row.submitted_allowed_values_json),
+          ),
+    reviewed_at: row.reviewed_at,
+    reviewed_by_user_id:
+      row.reviewed_by_user_id === null ? null : Number(row.reviewed_by_user_id),
+    allowed_values:
+      row.attribute_type === null
+        ? []
+        : normalizeAllowedValues(
+            row.attribute_type,
+            parseJsonArray(row.allowed_values_json),
+          ),
+    number_unit: row.number_unit,
+    min_value: row.min_value === null ? null : Number(row.min_value),
+    max_value: row.max_value === null ? null : Number(row.max_value),
+    is_active:
+      row.is_active === null || row.is_active === undefined
+        ? null
+        : Boolean(row.is_active),
+    display_label: attributeName
+      ? formatSpotAttributeDisplayLabel(attributeName, attributeType, value)
+      : value,
+  };
+}
+
+function normalizeCanonicalAttributeDefinition(
+  row: AttributeDefinitionRow,
+): CanonicalAttributeDefinition {
+  return {
+    attribute_id: Number(row.attribute_id),
+    name: row.name,
+    attribute_type: row.attribute_type,
+    allowed_values: normalizeAllowedValues(
+      row.attribute_type,
+      parseJsonArray(row.allowed_values_json),
+    ),
+    number_unit: row.number_unit,
+    min_value: row.min_value === null ? null : Number(row.min_value),
+    max_value: row.max_value === null ? null : Number(row.max_value),
+    help_text: row.help_text,
+    is_active: Boolean(row.is_active),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+async function getAttributeDefinitionMap(
+  includeInactive = true,
+  executor: PoolConnection | typeof db = db,
+) {
+  const [rows] = await executor.execute<AttributeDefinitionRow[]>(
+    `
+    SELECT
+      attribute_id,
+      name,
+      attribute_type,
+      allowed_values_json,
+      number_unit,
+      min_value,
+      max_value,
+      help_text,
+      is_active,
+      created_at,
+      updated_at
+    FROM attribute_menu
+    ${includeInactive ? "" : "WHERE is_active = 1"}
+    ORDER BY is_active DESC, name ASC, attribute_id ASC
+    `,
+  );
+
+  const normalizedRows = rows.map(normalizeCanonicalAttributeDefinition);
+  return new Map(normalizedRows.map((row) => [row.attribute_id, row]));
+}
+
+async function createCanonicalAttribute(input: {
+  name: string;
+  attribute_type: AttributeType;
+  allowed_values?: string[];
+  number_unit?: string | null;
+  min_value?: number | null;
+  max_value?: number | null;
+  help_text?: string | null;
+  adminUserId: number;
+  connection: PoolConnection;
+}) {
+  const normalizedName = input.name.trim();
+  const normalizedAllowedValues = normalizeAllowedValues(
+    input.attribute_type,
+    input.allowed_values ?? [],
+  );
+
+  const [existingRows] = await input.connection.execute<AttributeDefinitionRow[]>(
+    `
+    SELECT
+      attribute_id,
+      name,
+      attribute_type,
+      allowed_values_json,
+      number_unit,
+      min_value,
+      max_value,
+      help_text,
+      is_active,
+      created_at,
+      updated_at
+    FROM attribute_menu
+    WHERE LOWER(name) = LOWER(?)
+    LIMIT 1
+    `,
+    [normalizedName],
+  );
+
+  if (existingRows.length > 0) {
+    return normalizeCanonicalAttributeDefinition(existingRows[0]);
+  }
+
+  const [result] = await input.connection.execute<ResultSetHeader>(
+    `
+    INSERT INTO attribute_menu (
+      name,
+      attribute_type,
+      allowed_values_json,
+      number_unit,
+      min_value,
+      max_value,
+      help_text,
+      is_active,
+      created_by_user_id,
+      last_updated_by_user_id
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    `,
+    [
+      normalizedName,
+      input.attribute_type,
+      normalizedAllowedValues.length > 0
+        ? JSON.stringify(normalizedAllowedValues)
+        : null,
+      input.number_unit?.trim() || null,
+      input.min_value ?? null,
+      input.max_value ?? null,
+      input.help_text?.trim() || null,
+      input.adminUserId,
+      input.adminUserId,
+    ],
+  );
+
+  const [rows] = await input.connection.execute<AttributeDefinitionRow[]>(
+    `
+    SELECT
+      attribute_id,
+      name,
+      attribute_type,
+      allowed_values_json,
+      number_unit,
+      min_value,
+      max_value,
+      help_text,
+      is_active,
+      created_at,
+      updated_at
+    FROM attribute_menu
+    WHERE attribute_id = ?
+    LIMIT 1
+    `,
+    [result.insertId],
+  );
+
+  return normalizeCanonicalAttributeDefinition(rows[0]);
+}
+
+async function loadSpotAttributeRows(
+  executor: PoolConnection | typeof db,
+  spotId: number,
+) {
+  const [rows] = await executor.execute<SpotAttributeRow[]>(
+    `
+    SELECT
+      sa.spot_attribute_id,
+      sa.attribute_id,
+      am.name AS attribute_name,
+      am.attribute_type,
+      am.allowed_values_json,
+      am.number_unit,
+      am.min_value,
+      am.max_value,
+      am.is_active,
+      sa.value,
+      sa.notes,
+      sa.submitted_name,
+      sa.submitted_type,
+      sa.submitted_value,
+      sa.submitted_notes,
+      sa.submitted_allowed_values_json,
+      sa.moderation_status,
+      sa.moderation_reason,
+      sa.reviewed_at,
+      sa.reviewed_by_user_id
+    FROM spot_attributes sa
+    LEFT JOIN attribute_menu am ON sa.attribute_id = am.attribute_id
+    WHERE sa.spot_id = ?
+    ORDER BY sa.spot_attribute_id ASC
+    `,
+    [spotId],
+  );
+
+  return rows.map(normalizeSpotAttribute);
+}
+
+async function insertSpotAttributeRows(
+  connection: PoolConnection,
+  spotId: number,
+  selectedAttributes: CreateSpotInput["selectedAttributes"],
+  customAttributes: CreateSpotInput["customAttributes"],
+) {
+  const attributeDefinitions = await getAttributeDefinitionMap(false);
+  const existingAttributeIds = new Set<number>();
+
+  for (const attribute of selectedAttributes) {
+    if (existingAttributeIds.has(attribute.attribute_id)) {
+      throw new Error("Each attribute can only be used once per spot.");
+    }
+
+    const definition = attributeDefinitions.get(attribute.attribute_id);
+    if (!definition || !definition.is_active) {
+      throw new Error("One of the selected attributes is no longer available.");
+    }
+
+    const normalizedValue = validateAttributeValue({
+      name: definition.name,
+      attributeType: definition.attribute_type,
+      value: attribute.value,
+      allowedValues: definition.allowed_values,
+      minValue: definition.min_value,
+      maxValue: definition.max_value,
+    });
+
+    await connection.execute<ResultSetHeader>(
+      `
+      INSERT INTO spot_attributes (
+        attribute_id,
+        spot_id,
+        value,
+        notes,
+        submitted_value,
+        submitted_notes,
+        moderation_status
+      )
+      VALUES (?, ?, ?, ?, ?, ?, 'approved')
+      `,
+      [
+        definition.attribute_id,
+        spotId,
+        normalizedValue,
+        attribute.notes?.trim() || null,
+        normalizedValue,
+        attribute.notes?.trim() || null,
+      ],
+    );
+
+    existingAttributeIds.add(attribute.attribute_id);
+  }
+
+  const customNames = new Set<string>();
+  for (const attribute of customAttributes) {
+    const normalizedName = attribute.name.trim();
+    const duplicateKey = normalizedName.toLowerCase();
+    if (customNames.has(duplicateKey)) {
+      throw new Error("Custom attributes can only be proposed once per spot.");
+    }
+    customNames.add(duplicateKey);
+
+    const normalizedAllowedValues =
+      attribute.attribute_type === "single_choice"
+        ? normalizeAllowedValues(
+            "single_choice",
+            attribute.suggested_allowed_values ?? [],
+          )
+        : [];
+    const normalizedValue = validateAttributeValue({
+      name: normalizedName,
+      attributeType: attribute.attribute_type,
+      value: attribute.value,
+      allowedValues: normalizedAllowedValues,
+    });
+
+    await connection.execute<ResultSetHeader>(
+      `
+      INSERT INTO spot_attributes (
+        attribute_id,
+        spot_id,
+        value,
+        notes,
+        submitted_name,
+        submitted_type,
+        submitted_value,
+        submitted_notes,
+        submitted_allowed_values_json,
+        moderation_status
+      )
+      VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+      `,
+      [
+        spotId,
+        normalizedValue,
+        attribute.notes?.trim() || null,
+        normalizedName,
+        attribute.attribute_type,
+        normalizedValue,
+        attribute.notes?.trim() || null,
+        normalizedAllowedValues.length > 0
+          ? JSON.stringify(normalizedAllowedValues)
+          : null,
+      ],
+    );
+  }
+}
+
+async function applyAttributeReviews(
+  connection: PoolConnection,
+  spotId: number,
+  adminUserId: number,
+  reviews: NonNullable<UpdateSpotInput["attributeReviews"]>,
+) {
+  const existingRows = await loadSpotAttributeRows(connection, spotId);
+  const rowMap = new Map(existingRows.map((row) => [row.spot_attribute_id, row]));
+  const attributeDefinitions = await getAttributeDefinitionMap(true);
+  const usedAttributeIds = new Set<number>();
+
+  for (const row of existingRows) {
+    if (
+      row.moderation_status !== "rejected" &&
+      row.attribute_id !== null
+    ) {
+      usedAttributeIds.add(row.attribute_id);
+    }
+  }
+
+  for (const review of reviews) {
+    const existingRow = rowMap.get(review.spot_attribute_id);
+    if (!existingRow) {
+      throw new Error("One of the pending spot attributes could not be found.");
+    }
+
+    if (review.decision === "reject") {
+      await connection.execute<ResultSetHeader>(
+        `
+        UPDATE spot_attributes
+        SET
+          moderation_status = 'rejected',
+          moderation_reason = ?,
+          reviewed_at = CURRENT_TIMESTAMP,
+          reviewed_by_user_id = ?
+        WHERE spot_attribute_id = ?
+          AND spot_id = ?
+        `,
+        [
+          review.rejection_reason?.trim() || "Rejected during moderation.",
+          adminUserId,
+          review.spot_attribute_id,
+          spotId,
+        ],
+      );
+      continue;
+    }
+
+    let definition =
+      review.attribute_id !== undefined
+        ? attributeDefinitions.get(review.attribute_id)
+        : undefined;
+
+    if (review.decision === "approve_new") {
+      if (!review.name?.trim() || !review.attribute_type) {
+        throw new Error("New approved attributes need a name and type.");
+      }
+
+      const minValue = parseOptionalNumber(review.min_value);
+      const maxValue = parseOptionalNumber(review.max_value);
+      if (
+        minValue !== null &&
+        maxValue !== null &&
+        minValue > maxValue
+      ) {
+        throw new Error("Minimum value cannot be greater than maximum value.");
+      }
+
+      definition = await createCanonicalAttribute({
+        name: review.name,
+        attribute_type: review.attribute_type,
+        allowed_values: review.allowed_values,
+        number_unit: review.number_unit?.trim() || null,
+        min_value: minValue,
+        max_value: maxValue,
+        help_text: review.help_text?.trim() || null,
+        adminUserId,
+        connection,
+      });
+      attributeDefinitions.set(definition.attribute_id, definition);
+    }
+
+    if (!definition) {
+      throw new Error("Approved attributes must map to an existing definition.");
+    }
+
+    if (!definition.is_active) {
+      throw new Error(`${definition.name} is inactive and cannot be assigned.`);
+    }
+
+    if (
+      existingRow.attribute_id !== definition.attribute_id &&
+      usedAttributeIds.has(definition.attribute_id)
+    ) {
+      throw new Error("Each attribute can only be used once per spot.");
+    }
+
+    const normalizedValue = validateAttributeValue({
+      name: definition.name,
+      attributeType: definition.attribute_type,
+      value: review.value,
+      allowedValues: definition.allowed_values,
+      minValue: definition.min_value,
+      maxValue: definition.max_value,
+    });
+
+    if (existingRow.attribute_id !== null) {
+      usedAttributeIds.delete(existingRow.attribute_id);
+    }
+    usedAttributeIds.add(definition.attribute_id);
+
+    await connection.execute<ResultSetHeader>(
+      `
+      UPDATE spot_attributes
+      SET
+        attribute_id = ?,
+        value = ?,
+        notes = ?,
+        moderation_status = 'approved',
+        moderation_reason = NULL,
+        reviewed_at = CURRENT_TIMESTAMP,
+        reviewed_by_user_id = ?
+      WHERE spot_attribute_id = ?
+        AND spot_id = ?
+      `,
+      [
+        definition.attribute_id,
+        normalizedValue,
+        review.notes?.trim() || null,
+        adminUserId,
+        review.spot_attribute_id,
+        spotId,
+      ],
+    );
+  }
 }
 
 export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
@@ -341,6 +934,24 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
         WHERE sm.spot_id = s.spot_id
           AND sm.deleted_at IS NULL
       ) AS media_count
+      ,
+      (
+        SELECT GROUP_CONCAT(attribute_label SEPARATOR '||')
+        FROM (
+          SELECT
+            CASE
+              WHEN am.attribute_type = 'boolean' AND sa.value = 'Yes' THEN am.name
+              WHEN am.attribute_type = 'boolean' THEN CONCAT(am.name, ': ', sa.value)
+              ELSE CONCAT(am.name, ': ', sa.value)
+            END AS attribute_label
+          FROM spot_attributes sa
+          INNER JOIN attribute_menu am ON sa.attribute_id = am.attribute_id
+          WHERE sa.spot_id = s.spot_id
+            AND sa.moderation_status = 'approved'
+          ORDER BY sa.spot_attribute_id ASC
+          LIMIT 3
+        ) AS attribute_labels
+      ) AS attribute_badges_raw
     FROM spots s
     JOIN users u ON s.user_id = u.user_id
     LEFT JOIN reviews r ON s.spot_id = r.spot_id
@@ -435,6 +1046,23 @@ export const searchSpots = createServerFn({ method: "POST" })
           WHERE sm.spot_id = s.spot_id
             AND sm.deleted_at IS NULL
         ) AS media_count,
+        (
+          SELECT GROUP_CONCAT(attribute_label SEPARATOR '||')
+          FROM (
+            SELECT
+              CASE
+                WHEN am.attribute_type = 'boolean' AND sa.value = 'Yes' THEN am.name
+                WHEN am.attribute_type = 'boolean' THEN CONCAT(am.name, ': ', sa.value)
+                ELSE CONCAT(am.name, ': ', sa.value)
+              END AS attribute_label
+            FROM spot_attributes sa
+            INNER JOIN attribute_menu am ON sa.attribute_id = am.attribute_id
+            WHERE sa.spot_id = s.spot_id
+              AND sa.moderation_status = 'approved'
+            ORDER BY sa.spot_attribute_id ASC
+            LIMIT 3
+          ) AS attribute_labels
+        ) AS attribute_badges_raw,
         ${data.viewerUserId ? "MAX(CASE WHEN f.user_id IS NULL THEN 0 ELSE 1 END)" : "0"} AS is_favorited,
         ${distanceSql} AS distance_miles
       FROM spots s
@@ -622,10 +1250,13 @@ export const getSpot = createServerFn({ method: "GET" })
       [data.spotId],
     );
 
+    const attributes = await loadSpotAttributeRows(db, data.spotId);
+
     return {
       ...normalizeSpot(rows[0]),
       operating_hours: normalizeSpotHours(hoursRows),
       media: mediaRows.map(normalizeSpotMedia),
+      attributes,
     };
   });
 
@@ -773,6 +1404,13 @@ export const createSpot = createServerFn({ method: "POST" })
         );
       }
 
+      await insertSpotAttributeRows(
+        connection,
+        result.insertId,
+        data.selectedAttributes,
+        data.customAttributes,
+      );
+
       await connection.commit();
 
       return {
@@ -840,6 +1478,7 @@ export const updateSpot = createServerFn({ method: "POST" })
 
     const replaceHours = data.operatingHours !== undefined;
     const hoursRows = replaceHours ? buildSpotHoursRows(data.operatingHours ?? []) : [];
+    const replaceAttributes = data.attributeReviews !== undefined;
 
     updates.push("last_modified = CURRENT_TIMESTAMP");
     values.push(data.spotId);
@@ -883,6 +1522,19 @@ export const updateSpot = createServerFn({ method: "POST" })
             hourValues,
           );
         }
+      }
+
+      if (replaceAttributes) {
+        if (!data.adminUserId) {
+          throw new Error("Admin user is required to review spot attributes.");
+        }
+
+        await applyAttributeReviews(
+          connection,
+          data.spotId,
+          data.adminUserId,
+          data.attributeReviews ?? [],
+        );
       }
 
       await connection.commit();

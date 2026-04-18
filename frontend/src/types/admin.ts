@@ -1,3 +1,5 @@
+import type { AttributeType } from "@/lib/attributes";
+
 export interface AdminMetricSummary {
   totalUsers: number;
   totalActiveSpots: number;
@@ -62,6 +64,7 @@ export interface AdminDashboardData {
     fill: string;
   }>;
   roleCount: number;
+  attributeCount: number;
 }
 
 export interface AdminUserRow {
@@ -82,6 +85,20 @@ export interface AdminRoleRow {
   role_id: number;
   role_name: string;
   user_count: number;
+}
+
+export interface AdminAttributeRow {
+  attribute_id: number;
+  name: string;
+  attribute_type: AttributeType;
+  allowed_values: string[];
+  number_unit: string | null;
+  min_value: number | null;
+  max_value: number | null;
+  help_text: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AdminSpotRow {

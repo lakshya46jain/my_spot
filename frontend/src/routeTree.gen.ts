@@ -27,6 +27,7 @@ import { Route as AdminReportedSpotsRouteImport } from './routes/admin.reported-
 import { Route as AdminReportedReviewsRouteImport } from './routes/admin.reported-reviews'
 import { Route as AdminPermissionsRouteImport } from './routes/admin.permissions'
 import { Route as AdminPendingSpotsRouteImport } from './routes/admin.pending-spots'
+import { Route as AdminAttributesRouteImport } from './routes/admin.attributes'
 import { Route as AdminAnalyticsRouteImport } from './routes/admin.analytics'
 
 const UpdatePasswordRoute = UpdatePasswordRouteImport.update({
@@ -119,6 +120,11 @@ const AdminPendingSpotsRoute = AdminPendingSpotsRouteImport.update({
   path: '/pending-spots',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminAttributesRoute = AdminAttributesRouteImport.update({
+  id: '/attributes',
+  path: '/attributes',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminAnalyticsRoute = AdminAnalyticsRouteImport.update({
   id: '/analytics',
   path: '/analytics',
@@ -137,6 +143,7 @@ export interface FileRoutesByFullPath {
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/attributes': typeof AdminAttributesRoute
   '/admin/pending-spots': typeof AdminPendingSpotsRoute
   '/admin/permissions': typeof AdminPermissionsRoute
   '/admin/reported-reviews': typeof AdminReportedReviewsRoute
@@ -158,6 +165,7 @@ export interface FileRoutesByTo {
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/attributes': typeof AdminAttributesRoute
   '/admin/pending-spots': typeof AdminPendingSpotsRoute
   '/admin/permissions': typeof AdminPermissionsRoute
   '/admin/reported-reviews': typeof AdminReportedReviewsRoute
@@ -180,6 +188,7 @@ export interface FileRoutesById {
   '/signin': typeof SigninRoute
   '/update-password': typeof UpdatePasswordRoute
   '/admin/analytics': typeof AdminAnalyticsRoute
+  '/admin/attributes': typeof AdminAttributesRoute
   '/admin/pending-spots': typeof AdminPendingSpotsRoute
   '/admin/permissions': typeof AdminPermissionsRoute
   '/admin/reported-reviews': typeof AdminReportedReviewsRoute
@@ -203,6 +212,7 @@ export interface FileRouteTypes {
     | '/signin'
     | '/update-password'
     | '/admin/analytics'
+    | '/admin/attributes'
     | '/admin/pending-spots'
     | '/admin/permissions'
     | '/admin/reported-reviews'
@@ -224,6 +234,7 @@ export interface FileRouteTypes {
     | '/signin'
     | '/update-password'
     | '/admin/analytics'
+    | '/admin/attributes'
     | '/admin/pending-spots'
     | '/admin/permissions'
     | '/admin/reported-reviews'
@@ -245,6 +256,7 @@ export interface FileRouteTypes {
     | '/signin'
     | '/update-password'
     | '/admin/analytics'
+    | '/admin/attributes'
     | '/admin/pending-spots'
     | '/admin/permissions'
     | '/admin/reported-reviews'
@@ -397,6 +409,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminPendingSpotsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/attributes': {
+      id: '/admin/attributes'
+      path: '/attributes'
+      fullPath: '/admin/attributes'
+      preLoaderRoute: typeof AdminAttributesRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/analytics': {
       id: '/admin/analytics'
       path: '/analytics'
@@ -409,6 +428,7 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteChildren {
   AdminAnalyticsRoute: typeof AdminAnalyticsRoute
+  AdminAttributesRoute: typeof AdminAttributesRoute
   AdminPendingSpotsRoute: typeof AdminPendingSpotsRoute
   AdminPermissionsRoute: typeof AdminPermissionsRoute
   AdminReportedReviewsRoute: typeof AdminReportedReviewsRoute
@@ -420,6 +440,7 @@ interface AdminRouteChildren {
 
 const AdminRouteChildren: AdminRouteChildren = {
   AdminAnalyticsRoute: AdminAnalyticsRoute,
+  AdminAttributesRoute: AdminAttributesRoute,
   AdminPendingSpotsRoute: AdminPendingSpotsRoute,
   AdminPermissionsRoute: AdminPermissionsRoute,
   AdminReportedReviewsRoute: AdminReportedReviewsRoute,

@@ -456,6 +456,14 @@ async function loadDashboardData(): Promise<AdminDashboardData> {
     `,
   );
 
+  const [attributeCountRows] = await db.execute<RowDataPacket[]>(
+    `
+    SELECT COUNT(*) AS count
+    FROM attribute_menu
+    WHERE is_active = 1
+    `,
+  );
+
   const [activeAdminRows] = await db.execute<ActiveAdminRow[]>(
     `
     SELECT
@@ -582,6 +590,7 @@ async function loadDashboardData(): Promise<AdminDashboardData> {
     resolvedVsCreated,
     roleDistributionData,
     roleCount: roleRows.length,
+    attributeCount: toNumber(attributeCountRows[0]?.count),
   };
 }
 

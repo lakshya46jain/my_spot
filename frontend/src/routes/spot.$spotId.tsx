@@ -80,9 +80,6 @@ const DAYS_OF_WEEK = [
   "Sunday",
 ];
 
-// TODO: fetch real attributes from backend (spot_attributes table)
-const PLACEHOLDER_ATTRIBUTES = ["WiFi", "Quiet", "Power Outlets"];
-
 function getInitials(name: string) {
   return name
     .split(" ")
@@ -401,6 +398,11 @@ function SpotDetailsPage() {
     hasCoordinates && Boolean(import.meta.env.VITE_GOOGLE_MAPS_API_KEY);
   const operatingHours = spot.operating_hours ?? [];
   const mediaItems = spot.media ?? [];
+  const visibleAttributes = (spot.attributes ?? []).filter((attribute) =>
+    isPendingAdminPreview
+      ? attribute.moderation_status !== "rejected"
+      : attribute.moderation_status === "approved",
+  );
   const hasOperatingHours = operatingHours.length > 0;
   const canWriteReview =
     isLoggedIn && !isPendingAdminPreview && spot.status === "active";
@@ -524,15 +526,19 @@ function SpotDetailsPage() {
                 </div>
                 {/* Attributes */}
                 <div className="flex flex-wrap gap-2">
-                  {PLACEHOLDER_ATTRIBUTES.map((attr) => (
+                  {visibleAttributes.map((attribute) => (
                     <span
-                      key={attr}
+                      key={attribute.spot_attribute_id}
                       className="px-3 py-1 rounded-full bg-warm-50 text-warm-600 text-xs font-medium border border-warm-100"
                     >
-                      {attr}
+                      {attribute.display_label}
                     </span>
                   ))}
-                  {/* TODO: fetch real attributes from backend */}
+                  {visibleAttributes.length === 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      No attributes added yet
+                    </span>
+                  ) : null}
                 </div>
               </div>
               {/* Actions column */}

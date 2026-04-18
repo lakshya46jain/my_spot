@@ -32,9 +32,6 @@ const SPOT_TYPE_LABELS: Record<string, string> = {
   office: "Office",
 };
 
-// TODO: fetch real attributes from backend (spot_attributes table)
-const PLACEHOLDER_ATTRIBUTES = ["WiFi", "Quiet"];
-
 interface SpotCardProps {
   spot: Spot;
   isOwner?: boolean;
@@ -135,7 +132,7 @@ export function SpotCard({
 
         {/* Attributes */}
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {PLACEHOLDER_ATTRIBUTES.map((attr) => (
+          {(spot.attribute_badges ?? []).map((attr) => (
             <span
               key={attr}
               className="px-2 py-0.5 rounded-full bg-warm-50 text-warm-500 text-[10px] font-medium border border-warm-100"
@@ -143,7 +140,6 @@ export function SpotCard({
               {attr}
             </span>
           ))}
-          {/* TODO: fetch real attributes from backend */}
         </div>
 
         {/* Rating */}

@@ -83,7 +83,6 @@ function UsersPage() {
   const [savingEmail, setSavingEmail] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-
   async function loadUsersPage(detailUserId?: number | null) {
     try {
       setLoading(true);
@@ -92,6 +91,10 @@ function UsersPage() {
         getAdminUsers(),
         getAdminRoles(),
       ]);
+      if (!Array.isArray(userRows) || !Array.isArray(roleRows)) {
+        throw new Error("User management data returned an unexpected response.");
+      }
+
       setUsers(userRows);
       setRoles(roleRows);
       if (detailUserId) {
@@ -104,6 +107,8 @@ function UsersPage() {
       }
       return userRows;
     } catch (error) {
+      setUsers([]);
+      setRoles([]);
       setPageError(
         getUserFriendlyErrorMessage(error, "Could not load users."),
       );

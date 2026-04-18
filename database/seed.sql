@@ -17,24 +17,22 @@ DELETE FROM roles;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ======================
--- ROLES
--- ======================
-INSERT INTO roles (role_id, role_name) VALUES
-(1, 'admin'),
-(2, 'user'),
-(3, 'moderator'),
-(4, 'owner'),
-(5, 'guest');
-
--- ======================
 -- ATTRIBUTE MENU
 -- ======================
-INSERT INTO attribute_menu (attribute_id, name) VALUES
-(1, 'WiFi'),
-(2, 'Parking'),
-(3, 'Outdoor Seating'),
-(4, 'Pet Friendly'),
-(5, 'Study Friendly');
+INSERT INTO attribute_menu (
+    attribute_id,
+    name,
+    attribute_type,
+    allowed_values_json,
+    number_unit,
+    min_value,
+    max_value,
+    help_text,
+    is_active
+) VALUES
+(1, 'Wi-Fi', 'boolean', JSON_ARRAY('Yes', 'No'), NULL, NULL, NULL, 'Whether the spot offers usable Wi-Fi.', 1),
+(2, 'Noise Level', 'single_choice', JSON_ARRAY('Low', 'Medium', 'High'), NULL, NULL, NULL, 'How noisy the spot usually feels while studying.', 1),
+(3, 'Power Outlets', 'single_choice', JSON_ARRAY('None', 'Limited', 'Many'), NULL, NULL, NULL, 'Availability of nearby power outlets.', 1);
 
 -- ======================
 -- USERS
@@ -91,12 +89,23 @@ INSERT INTO favorites (user_id, spot_id) VALUES
 -- ======================
 -- SPOT ATTRIBUTES
 -- ======================
-INSERT INTO spot_attributes (spot_attribute_id, attribute_id, spot_id, value, notes) VALUES
-(1, 1, 1, 'Yes', 'Reliable WiFi for working on assignments'),
-(2, 3, 1, 'Yes', 'Some outdoor seating available'),
-(3, 5, 3, 'Yes', 'Quiet floors and lots of study areas'),
-(4, 2, 2, 'Limited', 'Parking nearby but can be difficult at busy times'),
-(5, 5, 5, 'Yes', 'Good quick study stop between classes');
+INSERT INTO spot_attributes (
+    spot_attribute_id,
+    attribute_id,
+    spot_id,
+    value,
+    notes,
+    submitted_name,
+    submitted_type,
+    submitted_value,
+    submitted_notes,
+    moderation_status
+) VALUES
+(1, 1, 1, 'Yes', 'Reliable Wi-Fi for working on assignments', NULL, NULL, NULL, NULL, 'approved'),
+(2, 2, 1, 'Medium', 'Can get busier around lunch', NULL, NULL, NULL, NULL, 'approved'),
+(3, 4, 3, 'Yes', 'Quiet floors and lots of study areas', NULL, NULL, NULL, NULL, 'approved'),
+(4, 3, 2, 'Limited', 'Some wall outlets, but they fill up fast', NULL, NULL, NULL, NULL, 'approved'),
+(5, 2, 5, 'Low', 'Usually calm between classes', NULL, NULL, NULL, NULL, 'approved');
 
 -- ======================
 -- SPOT HOURS

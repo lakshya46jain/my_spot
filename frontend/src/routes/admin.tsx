@@ -12,7 +12,7 @@ import type { AdminDashboardData } from "@/types/admin";
 import {
   Shield, Users, Flag, MapPin, Clock,
   AlertTriangle, CheckCircle2, MessageSquareWarning,
-  UserCog, ChevronRight,
+  UserCog, ChevronRight, Tags,
 } from "lucide-react";
 import {
   ChartContainer, ChartTooltip, ChartTooltipContent,
@@ -44,14 +44,20 @@ function AdminPage() {
   const [error, setError] = useState("");
   const [showAllAdmins, setShowAllAdmins] = useState(false);
   const allAdminsSectionRef = useRef<HTMLDivElement | null>(null);
-
   useEffect(() => {
     async function loadDashboard() {
       try {
         setLoading(true);
         setError("");
-        setDashboardData(await getAdminDashboardData());
+        const nextDashboardData = await getAdminDashboardData();
+
+        if (!nextDashboardData || typeof nextDashboardData !== "object") {
+          throw new Error("Dashboard data returned an unexpected response.");
+        }
+
+        setDashboardData(nextDashboardData);
       } catch (loadError) {
+        setDashboardData(null);
         setError(
           getUserFriendlyErrorMessage(
             loadError,
@@ -108,6 +114,7 @@ function AdminPage() {
         { to: "/admin/reported-reviews", label: "Reported Reviews", icon: MessageSquareWarning, count: metrics?.totalCommentsReported ?? 0, color: "bg-orange-100 text-orange-700" },
         { to: "/admin/users", label: "Users", icon: Users, count: metrics?.totalUsers ?? 0, color: "bg-sky-100 text-sky-700" },
         { to: "/admin/roles", label: "Roles", icon: UserCog, count: dashboardData.roleCount, color: "bg-violet-100 text-violet-700" },
+        { to: "/admin/attributes", label: "Attributes", icon: Tags, count: dashboardData.attributeCount, color: "bg-cyan-100 text-cyan-700" },
       ]
     : [];
 

@@ -8,12 +8,6 @@ CREATE TABLE roles (
     UNIQUE KEY uq_roles_role_name (role_name)
 );
 
-CREATE TABLE attribute_menu (
-    attribute_id INT NOT NULL AUTO_INCREMENT,
-    name VARCHAR(100) NOT NULL,
-    PRIMARY KEY (attribute_id)
-);
-
 CREATE TABLE users (
     user_id INT NOT NULL AUTO_INCREMENT,
     display_name VARCHAR(100) NOT NULL,
@@ -31,6 +25,33 @@ CREATE TABLE users (
     KEY idx_users_is_active (is_active),
     CONSTRAINT fk_users_role
         FOREIGN KEY (role_id) REFERENCES roles (role_id)
+);
+
+CREATE TABLE attribute_menu (
+    attribute_id INT NOT NULL AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    attribute_type VARCHAR(30) NOT NULL DEFAULT 'text',
+    allowed_values_json JSON DEFAULT NULL,
+    number_unit VARCHAR(50) DEFAULT NULL,
+    min_value DECIMAL(10,2) DEFAULT NULL,
+    max_value DECIMAL(10,2) DEFAULT NULL,
+    help_text VARCHAR(255) DEFAULT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_by_user_id INT DEFAULT NULL,
+    last_updated_by_user_id INT DEFAULT NULL,
+    PRIMARY KEY (attribute_id),
+    UNIQUE KEY uq_attribute_menu_name (name),
+    KEY fk_attribute_menu_created_by (created_by_user_id),
+    KEY fk_attribute_menu_updated_by (last_updated_by_user_id),
+    KEY idx_attribute_menu_active (is_active),
+    CONSTRAINT fk_attribute_menu_created_by
+        FOREIGN KEY (created_by_user_id) REFERENCES users (user_id)
+        ON DELETE SET NULL,
+    CONSTRAINT fk_attribute_menu_updated_by
+        FOREIGN KEY (last_updated_by_user_id) REFERENCES users (user_id)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE spots (
@@ -91,17 +112,33 @@ CREATE TABLE favorites (
 
 CREATE TABLE spot_attributes (
     spot_attribute_id INT NOT NULL AUTO_INCREMENT,
-    attribute_id INT NOT NULL,
+    attribute_id INT DEFAULT NULL,
     spot_id INT NOT NULL,
-    value VARCHAR(100) DEFAULT NULL,
+    value VARCHAR(255) DEFAULT NULL,
     notes VARCHAR(255) DEFAULT NULL,
+    submitted_name VARCHAR(100) DEFAULT NULL,
+    submitted_type VARCHAR(30) DEFAULT NULL,
+    submitted_value VARCHAR(255) DEFAULT NULL,
+    submitted_notes VARCHAR(255) DEFAULT NULL,
+    submitted_allowed_values_json JSON DEFAULT NULL,
+    moderation_status VARCHAR(30) NOT NULL DEFAULT 'approved',
+    moderation_reason VARCHAR(255) DEFAULT NULL,
+    reviewed_at DATETIME DEFAULT NULL,
+    reviewed_by_user_id INT DEFAULT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (spot_attribute_id),
+    UNIQUE KEY uq_spot_attributes_spot_attribute (spot_id, attribute_id),
     KEY fk_spot_attributes_attribute (attribute_id),
     KEY fk_spot_attributes_spot (spot_id),
+    KEY fk_spot_attributes_reviewed_by (reviewed_by_user_id),
+    KEY idx_spot_attributes_status (moderation_status),
     CONSTRAINT fk_spot_attributes_attribute
         FOREIGN KEY (attribute_id) REFERENCES attribute_menu (attribute_id),
     CONSTRAINT fk_spot_attributes_spot
-        FOREIGN KEY (spot_id) REFERENCES spots (spot_id)
+        FOREIGN KEY (spot_id) REFERENCES spots (spot_id),
+    CONSTRAINT fk_spot_attributes_reviewed_by
+        FOREIGN KEY (reviewed_by_user_id) REFERENCES users (user_id)
+        ON DELETE SET NULL
 );
 
 CREATE TABLE spot_hours (
@@ -164,3 +201,32 @@ CREATE TABLE content_report (
     CONSTRAINT fk_content_report_spot
         FOREIGN KEY (spot_id) REFERENCES spots (spot_id)
 );
+
+INSERT INTO roles (role_id, role_name) VALUES
+(1, 'Admin'),
+(2, 'Moderator'),
+(3, 'User');
+
+INSERT INTO users (
+    display_name,
+    email,
+    password_hash,
+    created_at,
+    role_id
+)
+SELECT
+    seed_users.display_name,
+    seed_users.email,
+    '$2b$10$X4ZtvjGL0glsdygvXuXb4uSla9UohKzYurzCt4g10qrfsRbnXM2oS',
+    CURRENT_TIMESTAMP,
+    roles.role_id
+FROM (
+    SELECT 'Lakshya Jain' AS display_name, 'lakshyajain@vt.edu' AS email
+    UNION ALL
+    SELECT 'Liam Erickson', 'liamerickson@vt.edu'
+    UNION ALL
+    SELECT 'Tia Mehta', 'mtia@vt.edu'
+    UNION ALL
+    SELECT 'Jenna Baker', 'bjenna@vt.edu'
+) AS seed_users
+INNER JOIN roles ON roles.role_name = 'Admin';
