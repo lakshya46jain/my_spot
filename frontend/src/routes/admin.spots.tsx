@@ -29,12 +29,60 @@ import {
   getGoogleMapsAddressSearchUrl,
   getGoogleMapsSearchUrl,
 } from "@/lib/google-maps-urls";
+import {
+  HIERARCHY_TYPES,
+  getAllowedParentHierarchyTypes,
+  getHierarchyTypeLabel,
+  hierarchyTypeRequiresParent,
+  type HierarchyType,
+} from "@/lib/hierarchy";
 import { getSpotTypeLabel, SPOT_TYPES } from "@/lib/spot-types";
 import { getAttributeMenu } from "@/server/attributes";
 import { getAdminSpots, updateAdminSpotStatuses } from "@/server/admin";
-import { deleteSpotMedia, getSpot, updateSpot } from "@/server/spots";
+import {
+  createSpot,
+  deleteSpotMedia,
+  getParentSpotOptions,
+  getSpot,
+  updateSpot,
+} from "@/server/spots";
 import type { AdminSpotRow } from "@/types/admin";
 import type { AttributeDefinition, SpotAttribute, SpotMedia } from "@/types/api";
+
+type ParentSpotOption = {
+  spot_id: number;
+  spot_name: string;
+  hierarchy_type: string;
+  spot_type: string;
+};
+
+type ParentDraft = {
+  spot_name: string;
+  hierarchy_type: HierarchyType;
+  spot_type: string;
+  short_description: string;
+  address: string;
+  latitude: string;
+  longitude: string;
+};
+
+function createParentDraftFromForm(params: {
+  spotType: string;
+  address: string;
+  latitude: string;
+  longitude: string;
+  allowedParentTypes: HierarchyType[];
+}): ParentDraft {
+  return {
+    spot_name: "",
+    hierarchy_type: params.allowedParentTypes[0] ?? "building",
+    spot_type: params.spotType,
+    short_description: "",
+    address: params.address,
+    latitude: params.latitude,
+    longitude: params.longitude,
+  };
+}
 
 export const Route = createFileRoute("/admin/spots")({
   component: AllSpotsPage,
@@ -134,6 +182,9 @@ function AllSpotsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editingSpot, setEditingSpot] = useState<AdminSpotRow | null>(null);
   const [editingSpotMedia, setEditingSpotMedia] = useState<SpotMedia[]>([]);
+  const [parentOptions, setParentOptions] = useState<ParentSpotOption[]>([]);
+  const [showCreateParent, setShowCreateParent] = useState(false);
+  const [creatingParent, setCreatingParent] = useState(false);
   const [editingSpotAttributes, setEditingSpotAttributes] = useState<
     EditableAttributeReview[]
   >([]);
@@ -141,6 +192,8 @@ function AllSpotsPage() {
   const [mediaDeleteTarget, setMediaDeleteTarget] = useState<SpotMedia | null>(null);
   const [deletingMedia, setDeletingMedia] = useState(false);
   const [editForm, setEditForm] = useState({
+    parent_spot_id: "__none__",
+    hierarchy_type: "standalone",
     spot_name: "",
     spot_type: "",
     address: "",
@@ -148,6 +201,21 @@ function AllSpotsPage() {
     longitude: "",
     short_description: "",
   });
+  const [parentDraft, setParentDraft] = useState<ParentDraft>(
+    createParentDraftFromForm({
+      spotType: "",
+      address: "",
+      latitude: "",
+      longitude: "",
+      allowedParentTypes: ["building"],
+    }),
+  );
+  const parentIsRequired = hierarchyTypeRequiresParent(
+    editForm.hierarchy_type as HierarchyType,
+  );
+  const allowedParentHierarchyTypes = getAllowedParentHierarchyTypes(
+    editForm.hierarchy_type as HierarchyType,
+  );
 
   async function loadSpots() {
     try {
@@ -183,6 +251,96 @@ function AllSpotsPage() {
     }
   }, [canAccessAdmin]);
 
+  useEffect(() => {
+    if (!editingSpot) {
+      setParentOptions([]);
+      setShowCreateParent(false);
+      return;
+    }
+
+    if (!parentIsRequired) {
+      setParentOptions([]);
+      setEditForm((form) =>
+        form.parent_spot_id === "__none__"
+          ? form
+          : { ...form, parent_spot_id: "__none__" },
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadParentOptions = async () => {
+      try {
+        const options = await getParentSpotOptions({
+          data: {
+            hierarchyType: editForm.hierarchy_type as HierarchyType,
+            excludeSpotId: editingSpot.spot_id,
+          },
+        });
+
+        if (!cancelled) {
+          setParentOptions(options);
+          setEditForm((form) =>
+            form.parent_spot_id === "__none__" ||
+            options.some((option) => String(option.spot_id) === form.parent_spot_id)
+              ? form
+              : { ...form, parent_spot_id: "__none__" },
+          );
+        }
+      } catch {
+        if (!cancelled) {
+          setParentOptions([]);
+        }
+      }
+    };
+
+    void loadParentOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editForm.hierarchy_type, editingSpot, parentIsRequired]);
+
+  useEffect(() => {
+    setParentDraft((current) => {
+      const nextHierarchyType = allowedParentHierarchyTypes.includes(
+        current.hierarchy_type,
+      )
+        ? current.hierarchy_type
+        : allowedParentHierarchyTypes[0] ?? "building";
+      const nextSpotType = current.spot_type || editForm.spot_type;
+      const nextAddress = current.address || editForm.address;
+      const nextLatitude = current.latitude || editForm.latitude;
+      const nextLongitude = current.longitude || editForm.longitude;
+
+      if (
+        nextHierarchyType === current.hierarchy_type &&
+        nextSpotType === current.spot_type &&
+        nextAddress === current.address &&
+        nextLatitude === current.latitude &&
+        nextLongitude === current.longitude
+      ) {
+        return current;
+      }
+
+      return {
+        ...current,
+        hierarchy_type: nextHierarchyType,
+        spot_type: nextSpotType,
+        address: nextAddress,
+        latitude: nextLatitude,
+        longitude: nextLongitude,
+      };
+    });
+  }, [
+    editForm.hierarchy_type,
+    editForm.address,
+    editForm.latitude,
+    editForm.longitude,
+    editForm.spot_type,
+  ]);
+
   if (!isLoggedIn || !canAccessAdmin) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -213,7 +371,11 @@ function AllSpotsPage() {
 
   const openEdit = async (spot: AdminSpotRow) => {
     setEditingSpot(spot);
+    setShowCreateParent(false);
     setEditForm({
+      parent_spot_id:
+        spot.parent_spot_id === null ? "__none__" : String(spot.parent_spot_id),
+      hierarchy_type: spot.hierarchy_type,
       spot_name: spot.spot_name,
       spot_type: spot.spot_type,
       address: spot.address ?? "",
@@ -221,8 +383,24 @@ function AllSpotsPage() {
       longitude: spot.longitude === null ? "" : String(spot.longitude),
       short_description: spot.short_description ?? "",
     });
+    setParentDraft(
+      createParentDraftFromForm({
+        spotType: spot.spot_type,
+        address: spot.address ?? "",
+        latitude: spot.latitude === null ? "" : String(spot.latitude),
+        longitude: spot.longitude === null ? "" : String(spot.longitude),
+        allowedParentTypes:
+          getAllowedParentHierarchyTypes(spot.hierarchy_type as HierarchyType),
+      }),
+    );
     try {
       const result = await getSpot({ data: { spotId: spot.spot_id } });
+      setEditForm((form) => ({
+        ...form,
+        parent_spot_id:
+          result.parent_spot_id === null ? "__none__" : String(result.parent_spot_id),
+        hierarchy_type: result.hierarchy_type,
+      }));
       setEditingSpotMedia(result.media ?? []);
       setEditingSpotAttributes(
         (result.attributes ?? []).map((attribute) => {
@@ -314,11 +492,20 @@ function AllSpotsPage() {
     }
 
     try {
+      if (parentIsRequired && editForm.parent_spot_id === "__none__") {
+        throw new Error("Choose a valid parent location before saving this spot.");
+      }
+
       setPageError("");
       setActionMessage("");
       await updateSpot({
         data: {
           spotId: editingSpot.spot_id,
+          parent_spot_id:
+            editForm.parent_spot_id === "__none__"
+              ? null
+              : Number(editForm.parent_spot_id),
+          hierarchy_type: editForm.hierarchy_type as HierarchyType,
           spot_name: editForm.spot_name,
           spot_type: editForm.spot_type,
           address: editForm.address,
@@ -373,11 +560,20 @@ function AllSpotsPage() {
     }
 
     try {
+      if (parentIsRequired && editForm.parent_spot_id === "__none__") {
+        throw new Error("Choose a valid parent location before approving this spot.");
+      }
+
       setPageError("");
       setActionMessage("");
       await updateSpot({
         data: {
           spotId: editingSpot.spot_id,
+          parent_spot_id:
+            editForm.parent_spot_id === "__none__"
+              ? null
+              : Number(editForm.parent_spot_id),
+          hierarchy_type: editForm.hierarchy_type as HierarchyType,
           spot_name: editForm.spot_name,
           spot_type: editForm.spot_type,
           address: editForm.address,
@@ -432,6 +628,66 @@ function AllSpotsPage() {
       setPageError(
         getUserFriendlyErrorMessage(error, "Could not save the spot changes."),
       );
+    }
+  };
+
+  const handleCreateParent = async () => {
+    if (!user || !editingSpot) {
+      return;
+    }
+
+    try {
+      setCreatingParent(true);
+      setPageError("");
+      setActionMessage("");
+
+      const result = await createSpot({
+        data: {
+          userId: user.userId,
+          parent_spot_id: null,
+          hierarchy_type: parentDraft.hierarchy_type,
+          spot_name: parentDraft.spot_name,
+          spot_type: parentDraft.spot_type,
+          short_description: parentDraft.short_description,
+          address: parentDraft.address,
+          latitude: parentDraft.latitude,
+          longitude: parentDraft.longitude,
+          status: "active",
+          operatingHours: [],
+          selectedAttributes: [],
+          customAttributes: [],
+        },
+      });
+
+      const options = await getParentSpotOptions({
+        data: {
+          hierarchyType: editForm.hierarchy_type as HierarchyType,
+          excludeSpotId: editingSpot.spot_id,
+        },
+      });
+
+      setParentOptions(options);
+      setEditForm((form) => ({
+        ...form,
+        parent_spot_id: String(result.spotId),
+      }));
+      setShowCreateParent(false);
+      setParentDraft(
+        createParentDraftFromForm({
+          spotType: editForm.spot_type,
+          address: editForm.address,
+          latitude: editForm.latitude,
+          longitude: editForm.longitude,
+          allowedParentTypes: allowedParentHierarchyTypes,
+        }),
+      );
+      setActionMessage("Parent location created and selected successfully.");
+    } catch (error) {
+      setPageError(
+        getUserFriendlyErrorMessage(error, "Could not create the parent location."),
+      );
+    } finally {
+      setCreatingParent(false);
     }
   };
 
@@ -647,6 +903,200 @@ function AllSpotsPage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Hierarchy Type</label>
+                <Select
+                  value={editForm.hierarchy_type}
+                  onValueChange={(value) =>
+                    setEditForm((form) => ({
+                      ...form,
+                      hierarchy_type: value,
+                      parent_spot_id:
+                        hierarchyTypeRequiresParent(value as HierarchyType)
+                          ? form.parent_spot_id
+                          : "__none__",
+                    }))
+                  }
+                >
+                  <SelectTrigger className="mt-1 rounded-xl">
+                    <SelectValue placeholder="Choose hierarchy type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {HIERARCHY_TYPES.map((type) => (
+                      <SelectItem key={type.value} value={type.value}>
+                        {type.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {
+                    HIERARCHY_TYPES.find(
+                      (type) => type.value === editForm.hierarchy_type,
+                    )?.description
+                  }
+                </p>
+              </div>
+              <div>
+                <label className="text-sm font-medium text-foreground">Parent Location</label>
+                <Select
+                  value={editForm.parent_spot_id}
+                  onValueChange={(value) =>
+                    setEditForm((form) => ({ ...form, parent_spot_id: value }))
+                  }
+                  disabled={!parentIsRequired}
+                >
+                  <SelectTrigger className="mt-1 rounded-xl">
+                    <SelectValue
+                      placeholder={
+                        parentIsRequired
+                          ? "Choose parent location"
+                          : "This spot stays at the top level"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">
+                      {parentIsRequired ? "Choose a parent" : "No parent needed"}
+                    </SelectItem>
+                    {parentOptions.map((option) => (
+                      <SelectItem key={option.spot_id} value={String(option.spot_id)}>
+                        {option.spot_name} · {getHierarchyTypeLabel(option.hierarchy_type)} ·{" "}
+                        {getSpotTypeLabel(option.spot_type)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {parentIsRequired
+                    ? `Allowed parent types: ${allowedParentHierarchyTypes
+                        .map((type) => getHierarchyTypeLabel(type))
+                        .join(" or ")}.`
+                    : "Standalone and building spots cannot have a parent."}
+                </p>
+                {parentIsRequired ? (
+                  <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/30 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-medium text-foreground">
+                          Parent location missing?
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          Create the building or floor here, then attach this spot to it.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-xl"
+                        onClick={() => setShowCreateParent((current) => !current)}
+                      >
+                        {showCreateParent ? "Cancel" : "Add Parent"}
+                      </Button>
+                    </div>
+
+                    {showCreateParent ? (
+                      <div className="mt-4 space-y-3">
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">
+                            Parent Name
+                          </label>
+                          <Input
+                            value={parentDraft.spot_name}
+                            onChange={(event) =>
+                              setParentDraft((draft) => ({
+                                ...draft,
+                                spot_name: event.target.value,
+                              }))
+                            }
+                            className="mt-1 rounded-xl"
+                            placeholder="e.g., Newman Library"
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">
+                              Parent Hierarchy
+                            </label>
+                            <Select
+                              value={parentDraft.hierarchy_type}
+                              onValueChange={(value) =>
+                                setParentDraft((draft) => ({
+                                  ...draft,
+                                  hierarchy_type: value as HierarchyType,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="mt-1 rounded-xl">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {allowedParentHierarchyTypes.map((type) => (
+                                  <SelectItem key={type} value={type}>
+                                    {getHierarchyTypeLabel(type)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-medium text-muted-foreground">
+                              Parent Spot Type
+                            </label>
+                            <Select
+                              value={parentDraft.spot_type}
+                              onValueChange={(value) =>
+                                setParentDraft((draft) => ({
+                                  ...draft,
+                                  spot_type: value,
+                                }))
+                              }
+                            >
+                              <SelectTrigger className="mt-1 rounded-xl">
+                                <SelectValue placeholder="Choose spot type" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {SPOT_TYPES.map((spotType) => (
+                                  <SelectItem key={spotType.value} value={spotType.value}>
+                                    {spotType.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-muted-foreground">
+                            Description
+                          </label>
+                          <Textarea
+                            value={parentDraft.short_description}
+                            onChange={(event) =>
+                              setParentDraft((draft) => ({
+                                ...draft,
+                                short_description: event.target.value,
+                              }))
+                            }
+                            className="mt-1 rounded-xl"
+                            rows={2}
+                            placeholder="Optional context for the parent location"
+                          />
+                        </div>
+                        <div className="flex justify-end">
+                          <Button
+                            type="button"
+                            className="rounded-xl"
+                            onClick={handleCreateParent}
+                            disabled={creatingParent}
+                          >
+                            {creatingParent ? "Creating..." : "Create Parent Location"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div>
                 <label className="text-sm font-medium text-foreground">Address</label>

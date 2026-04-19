@@ -10,11 +10,20 @@ import {
   parseJsonArray,
   validateAttributeValue,
 } from "@/lib/attribute-helpers";
+import {
+  HIERARCHY_TYPES,
+  type HierarchyType,
+  getAllowedParentHierarchyTypes,
+  hierarchyTypeRequiresParent,
+} from "@/lib/hierarchy";
 import type { SpotAttribute } from "@/types/api";
 import { db } from "./db";
 import { deleteFilesFromFirebaseStorage } from "./firebase-admin";
 
 const spotStatusSchema = z.enum(["active", "inactive", "pending"]);
+const hierarchyTypeSchema = z.enum(
+  HIERARCHY_TYPES.map((type) => type.value) as [HierarchyType, ...HierarchyType[]],
+);
 const meridiemSchema = z.enum(["AM", "PM"]);
 const optionalMeridiemSchema = z.union([meridiemSchema, z.literal("")]);
 const dayOfWeekSchema = z.enum([
@@ -75,6 +84,8 @@ const attributeReviewSchema = z.object({
 
 const createSpotSchema = z.object({
   userId: z.number().int().positive(),
+  parent_spot_id: z.number().int().positive().nullable().optional(),
+  hierarchy_type: hierarchyTypeSchema,
   spot_name: z.string().trim().min(1, "Spot name is required."),
   spot_type: z.string().trim().min(1, "Spot type is required."),
   short_description: z.string().trim().optional().or(z.literal("")),
@@ -91,6 +102,8 @@ type CreateSpotInput = z.infer<typeof createSpotSchema>;
 
 const updateSpotSchema = z.object({
   spotId: z.number().int().positive(),
+  parent_spot_id: z.number().int().positive().nullable().optional(),
+  hierarchy_type: hierarchyTypeSchema.optional(),
   spot_name: z.string().trim().optional(),
   spot_type: z.string().trim().optional(),
   short_description: z.string().trim().optional().or(z.literal("")),
@@ -124,6 +137,13 @@ const getSpotSchema = z.object({
 
 type GetSpotInput = z.infer<typeof getSpotSchema>;
 
+const getParentSpotOptionsSchema = z.object({
+  hierarchyType: hierarchyTypeSchema,
+  excludeSpotId: z.number().int().positive().optional(),
+});
+
+type GetParentSpotOptionsInput = z.infer<typeof getParentSpotOptionsSchema>;
+
 const searchSpotsSchema = z.object({
   query: z.string().trim().optional().default(""),
   latitude: z.number().finite().optional(),
@@ -136,6 +156,8 @@ type SearchSpotsInput = z.infer<typeof searchSpotsSchema>;
 
 type SpotRow = RowDataPacket & {
   spot_id: number;
+  parent_spot_id: number | null;
+  hierarchy_type: HierarchyType;
   spot_name: string;
   spot_type: string;
   short_description: string | null;
@@ -159,6 +181,17 @@ type SpotRow = RowDataPacket & {
 
 type ExistingSpotRow = RowDataPacket & {
   spot_id: number;
+  parent_spot_id?: number | null;
+  hierarchy_type?: HierarchyType;
+  status?: "active" | "inactive" | "pending";
+};
+
+type SpotRelationshipRow = RowDataPacket & {
+  spot_id: number;
+  spot_name: string;
+  hierarchy_type: HierarchyType;
+  spot_type: string;
+  status?: "active" | "inactive" | "pending";
 };
 
 type SpotHoursRow = RowDataPacket & {
@@ -375,6 +408,89 @@ function parseRequiredDecimal(value: string, fieldLabel: string) {
   }
 
   return parsed;
+}
+
+async function validateSpotHierarchy(
+  connection: PoolConnection,
+  params: {
+    spotId?: number;
+    hierarchyType: HierarchyType;
+    parentSpotId: number | null;
+    requireResolvedParent?: boolean;
+  },
+) {
+  const {
+    spotId,
+    hierarchyType,
+    parentSpotId,
+    requireResolvedParent = true,
+  } = params;
+  const allowedParentTypes = getAllowedParentHierarchyTypes(hierarchyType);
+
+  if (
+    requireResolvedParent &&
+    hierarchyTypeRequiresParent(hierarchyType) &&
+    parentSpotId === null
+  ) {
+    throw new Error(`${hierarchyType} spots must belong to a parent location.`);
+  }
+
+  if (!hierarchyTypeRequiresParent(hierarchyType) && parentSpotId !== null) {
+    throw new Error(`${hierarchyType} spots cannot be placed inside another spot.`);
+  }
+
+  if (parentSpotId === null) {
+    return;
+  }
+
+  if (spotId !== undefined && parentSpotId === spotId) {
+    throw new Error("A spot cannot be its own parent.");
+  }
+
+  const [parentRows] = await connection.execute<ExistingSpotRow[]>(
+    `
+    SELECT spot_id, hierarchy_type
+    FROM spots
+    WHERE spot_id = ?
+      AND status = 'active'
+    LIMIT 1
+    `,
+    [parentSpotId],
+  );
+
+  if (parentRows.length === 0 || !parentRows[0].hierarchy_type) {
+    throw new Error("Choose an existing approved parent location.");
+  }
+
+  if (!allowedParentTypes.includes(parentRows[0].hierarchy_type)) {
+    throw new Error(
+      `${hierarchyType} spots can only belong to ${allowedParentTypes.join(" or ")} locations.`,
+    );
+  }
+
+  if (spotId === undefined) {
+    return;
+  }
+
+  let currentParentId: number | null = parentSpotId;
+
+  while (currentParentId !== null) {
+    if (currentParentId === spotId) {
+      throw new Error("This parent would create a hierarchy loop.");
+    }
+
+    const [rows] = await connection.execute<ExistingSpotRow[]>(
+      `
+      SELECT parent_spot_id
+      FROM spots
+      WHERE spot_id = ?
+      LIMIT 1
+      `,
+      [currentParentId],
+    );
+
+    currentParentId = rows[0]?.parent_spot_id ?? null;
+  }
 }
 
 function normalizeSpot(row: SpotRow) {
@@ -906,6 +1022,8 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
     `
     SELECT
       s.spot_id,
+      s.parent_spot_id,
+      s.hierarchy_type,
       s.spot_name,
       s.spot_type,
       s.short_description,
@@ -959,6 +1077,8 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
     WHERE s.status = 'active'
     GROUP BY
       s.spot_id,
+      s.parent_spot_id,
+      s.hierarchy_type,
       s.spot_name,
       s.spot_type,
       s.short_description,
@@ -977,6 +1097,48 @@ export const getSpots = createServerFn({ method: "GET" }).handler(async () => {
 
   return rows.map(normalizeSpot);
 });
+
+export const getParentSpotOptions = createServerFn({ method: "GET" })
+  .inputValidator((input: GetParentSpotOptionsInput) =>
+    getParentSpotOptionsSchema.parse(input),
+  )
+  .handler(async ({ data }) => {
+    const allowedParentTypes = getAllowedParentHierarchyTypes(data.hierarchyType);
+
+    if (allowedParentTypes.length === 0) {
+      return [];
+    }
+
+    const placeholders = allowedParentTypes.map(() => "?").join(", ");
+    const params: Array<string | number> = [...allowedParentTypes];
+    let excludeSql = "";
+
+    if (data.excludeSpotId !== undefined) {
+      excludeSql = "AND spot_id <> ?";
+      params.push(data.excludeSpotId);
+    }
+
+    const [rows] = await db.execute<SpotRelationshipRow[]>(
+      `
+      SELECT
+        spot_id,
+        spot_name,
+        hierarchy_type,
+        spot_type,
+        status
+      FROM spots
+      WHERE status = 'active'
+        AND hierarchy_type IN (${placeholders})
+        ${excludeSql}
+      ORDER BY
+        FIELD(hierarchy_type, 'building', 'floor', 'room', 'standalone'),
+        spot_name ASC
+      `,
+      params,
+    );
+
+    return rows;
+  });
 
 export const searchSpots = createServerFn({ method: "POST" })
   .inputValidator((input: SearchSpotsInput) => searchSpotsSchema.parse(input))
@@ -1018,6 +1180,8 @@ export const searchSpots = createServerFn({ method: "POST" })
     let sql = `
       SELECT
         s.spot_id,
+        s.parent_spot_id,
+        s.hierarchy_type,
         s.spot_name,
         s.spot_type,
         s.short_description,
@@ -1095,6 +1259,8 @@ export const searchSpots = createServerFn({ method: "POST" })
       sql += `
         GROUP BY
           s.spot_id,
+          s.parent_spot_id,
+          s.hierarchy_type,
           s.spot_name,
           s.spot_type,
           s.short_description,
@@ -1117,6 +1283,8 @@ export const searchSpots = createServerFn({ method: "POST" })
       sql += `
         GROUP BY
           s.spot_id,
+          s.parent_spot_id,
+          s.hierarchy_type,
           s.spot_name,
           s.spot_type,
           s.short_description,
@@ -1144,6 +1312,8 @@ export const getSpot = createServerFn({ method: "GET" })
       `
       SELECT
         s.spot_id,
+        s.parent_spot_id,
+        s.hierarchy_type,
         s.spot_name,
         s.spot_type,
         s.short_description,
@@ -1179,6 +1349,8 @@ export const getSpot = createServerFn({ method: "GET" })
       WHERE s.spot_id = ?
       GROUP BY
         s.spot_id,
+        s.parent_spot_id,
+        s.hierarchy_type,
         s.spot_name,
         s.spot_type,
         s.short_description,
@@ -1250,13 +1422,51 @@ export const getSpot = createServerFn({ method: "GET" })
       [data.spotId],
     );
 
+    const normalizedSpot = normalizeSpot(rows[0]);
+    const [parentRows] =
+      normalizedSpot.parent_spot_id === null
+        ? [[] as SpotRelationshipRow[]]
+        : await db.execute<SpotRelationshipRow[]>(
+            `
+            SELECT
+              spot_id,
+              spot_name,
+              hierarchy_type,
+              spot_type
+            FROM spots
+            WHERE spot_id = ?
+            LIMIT 1
+            `,
+            [normalizedSpot.parent_spot_id],
+          );
+
+    const [childRows] = await db.execute<SpotRelationshipRow[]>(
+      `
+      SELECT
+        spot_id,
+        spot_name,
+        hierarchy_type,
+        spot_type,
+        status
+      FROM spots
+      WHERE parent_spot_id = ?
+        AND status = 'active'
+      ORDER BY
+        FIELD(hierarchy_type, 'building', 'floor', 'room', 'standalone'),
+        spot_name ASC
+      `,
+      [data.spotId],
+    );
+
     const attributes = await loadSpotAttributeRows(db, data.spotId);
 
     return {
-      ...normalizeSpot(rows[0]),
+      ...normalizedSpot,
       operating_hours: normalizeSpotHours(hoursRows),
       media: mediaRows.map(normalizeSpotMedia),
       attributes,
+      parent_spot: parentRows[0] ?? null,
+      child_spots: childRows,
     };
   });
 
@@ -1353,9 +1563,17 @@ export const createSpot = createServerFn({ method: "POST" })
     try {
       await connection.beginTransaction();
 
+      await validateSpotHierarchy(connection, {
+        hierarchyType: data.hierarchy_type,
+        parentSpotId: data.parent_spot_id ?? null,
+        requireResolvedParent: data.status === "active",
+      });
+
       const [result] = await connection.execute<ResultSetHeader>(
         `
         INSERT INTO spots (
+          parent_spot_id,
+          hierarchy_type,
           spot_name,
           spot_type,
           short_description,
@@ -1365,9 +1583,11 @@ export const createSpot = createServerFn({ method: "POST" })
           user_id,
           status
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
         [
+          data.parent_spot_id ?? null,
+          data.hierarchy_type,
           data.spot_name.trim(),
           data.spot_type.trim(),
           data.short_description?.trim() || null,
@@ -1430,7 +1650,13 @@ export const updateSpot = createServerFn({ method: "POST" })
   .inputValidator((input: UpdateSpotInput) => updateSpotSchema.parse(input))
   .handler(async ({ data }) => {
     const [existing] = await db.execute<ExistingSpotRow[]>(
-      `SELECT spot_id FROM spots WHERE spot_id = ? LIMIT 1`,
+      `
+      SELECT spot_id, parent_spot_id, hierarchy_type
+      , status
+      FROM spots
+      WHERE spot_id = ?
+      LIMIT 1
+      `,
       [data.spotId],
     );
 
@@ -1449,6 +1675,16 @@ export const updateSpot = createServerFn({ method: "POST" })
     if (data.spot_type !== undefined) {
       updates.push("spot_type = ?");
       values.push(data.spot_type.trim());
+    }
+
+    if (data.hierarchy_type !== undefined) {
+      updates.push("hierarchy_type = ?");
+      values.push(data.hierarchy_type);
+    }
+
+    if (data.parent_spot_id !== undefined) {
+      updates.push("parent_spot_id = ?");
+      values.push(data.parent_spot_id);
     }
 
     if (data.short_description !== undefined) {
@@ -1487,6 +1723,24 @@ export const updateSpot = createServerFn({ method: "POST" })
 
     try {
       await connection.beginTransaction();
+
+      const nextHierarchyType = data.hierarchy_type ?? existing[0].hierarchy_type;
+      const nextParentSpotId =
+        data.parent_spot_id !== undefined
+          ? data.parent_spot_id
+          : existing[0].parent_spot_id ?? null;
+      const nextStatus = data.status ?? existing[0].status;
+
+      if (!nextHierarchyType) {
+        throw new Error("Hierarchy type is required.");
+      }
+
+      await validateSpotHierarchy(connection, {
+        spotId: data.spotId,
+        hierarchyType: nextHierarchyType,
+        parentSpotId: nextParentSpotId,
+        requireResolvedParent: nextStatus === "active",
+      });
 
       await connection.execute<ResultSetHeader>(
         `UPDATE spots SET ${updates.join(", ")} WHERE spot_id = ?`,

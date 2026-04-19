@@ -34,6 +34,7 @@ const SPOT_TYPE_LABELS: Record<string, string> = {
 
 interface SpotCardProps {
   spot: Spot;
+  childCount?: number;
   isOwner?: boolean;
   isLoggedIn?: boolean;
   showAddress?: boolean;
@@ -46,6 +47,7 @@ interface SpotCardProps {
 
 export function SpotCard({
   spot,
+  childCount = 0,
   isOwner = false,
   isLoggedIn = false,
   showAddress = true,
@@ -129,6 +131,14 @@ export function SpotCard({
             </p>
           </div>
         )}
+
+        {childCount > 0 ? (
+          <div className="mb-2">
+            <span className="inline-flex rounded-full border border-warm-200 bg-warm-50 px-2.5 py-1 text-[10px] font-medium text-warm-700">
+              Contains {childCount} nested {childCount === 1 ? "space" : "spaces"}
+            </span>
+          </div>
+        ) : null}
 
         {/* Attributes */}
         <div className="flex flex-wrap gap-1.5 mb-2">

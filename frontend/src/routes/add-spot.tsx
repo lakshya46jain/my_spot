@@ -6,6 +6,13 @@ import { importGoogleMapsLibrary } from "@/lib/google-maps";
 import { getGoogleMapsEmbedUrl } from "@/lib/google-maps-urls";
 import { SPOT_TYPES } from "@/lib/spot-types";
 import {
+  HIERARCHY_TYPES,
+  getAllowedParentHierarchyTypes,
+  getHierarchyTypeLabel,
+  hierarchyTypeRequiresParent,
+  type HierarchyType,
+} from "@/lib/hierarchy";
+import {
   ATTRIBUTE_TYPE_OPTIONS,
   getAttributeTypeLabel,
   parseDelimitedValues,
@@ -26,8 +33,6 @@ import {
   MapPin,
   Navigation,
   Search,
-  ChevronDown,
-  ChevronUp,
   Loader2,
   X,
 } from "lucide-react";
@@ -43,10 +48,12 @@ import { getUserFriendlyErrorMessage } from "@/lib/error-message";
 import { prepareImageUpload } from "@/lib/image-upload";
 import { getAttributeMenu } from "@/server/attributes";
 import { uploadSpotMedia } from "@/server/media";
-import { createSpot } from "@/server/spots";
+import { createSpot, getParentSpotOptions } from "@/server/spots";
 import type { AttributeDefinition } from "@/types/api";
 
 export interface CreateSpotData {
+  parent_spot_id: number | null;
+  hierarchy_type: HierarchyType;
   spot_name: string;
   spot_type: string;
   short_description: string;
@@ -55,6 +62,13 @@ export interface CreateSpotData {
   longitude: string;
   status: "active" | "inactive" | "pending";
 }
+
+type ParentSpotOption = {
+  spot_id: number;
+  spot_name: string;
+  hierarchy_type: string;
+  spot_type: string;
+};
 
 type SelectedAttributeDraft = {
   attribute_id: number;
@@ -243,6 +257,8 @@ function AddSpotPage() {
   const { user, isLoggedIn } = useAuth();
 
   const [formData, setFormData] = useState<CreateSpotData>({
+    parent_spot_id: null,
+    hierarchy_type: "standalone",
     spot_name: "",
     spot_type: "",
     short_description: "",
@@ -260,7 +276,8 @@ function AddSpotPage() {
     LocationSuggestion[]
   >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [parentOptions, setParentOptions] = useState<ParentSpotOption[]>([]);
+  const [parentOptionsLoading, setParentOptionsLoading] = useState(false);
   const [operatingHours, setOperatingHours] = useState<DayHours[]>(createDefaultHours());
   const [photoFiles, setPhotoFiles] = useState<Array<File | null>>([
     null,
@@ -319,6 +336,10 @@ function AddSpotPage() {
     customAttributeDraft.attribute_type === "single_choice"
       ? parseDelimitedValues(customAttributeDraft.suggested_allowed_values_text)
       : [];
+  const allowedParentHierarchyTypes = getAllowedParentHierarchyTypes(
+    formData.hierarchy_type,
+  );
+  const parentIsRequired = hierarchyTypeRequiresParent(formData.hierarchy_type);
 
   const resetCustomAttributeDraft = () => {
     setCustomAttributeDraft({
@@ -369,6 +390,57 @@ function AddSpotPage() {
 
     void loadAttributes();
   }, []);
+
+  useEffect(() => {
+    if (!parentIsRequired) {
+      setParentOptions([]);
+      setFormData((prev) =>
+        prev.parent_spot_id === null ? prev : { ...prev, parent_spot_id: null },
+      );
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadParentOptions = async () => {
+      try {
+        setParentOptionsLoading(true);
+        const options = await getParentSpotOptions({
+          data: { hierarchyType: formData.hierarchy_type },
+        });
+
+        if (!cancelled) {
+          setParentOptions(options);
+          setFormData((prev) => {
+            const nextParentIsValid =
+              prev.parent_spot_id !== null &&
+              options.some((option) => option.spot_id === prev.parent_spot_id);
+
+            return nextParentIsValid
+              ? prev
+              : {
+                  ...prev,
+                  parent_spot_id: null,
+                };
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setParentOptions([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setParentOptionsLoading(false);
+        }
+      }
+    };
+
+    void loadParentOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formData.hierarchy_type, parentIsRequired]);
 
   useEffect(() => {
     const inputValue = formData.address.trim();
@@ -442,6 +514,15 @@ function AddSpotPage() {
     setFormData((prev) => ({
       ...prev,
       spot_type: value,
+    }));
+  };
+
+  const selectHierarchyType = (value: HierarchyType) => {
+    setFormData((prev) => ({
+      ...prev,
+      hierarchy_type: value,
+      parent_spot_id:
+        hierarchyTypeRequiresParent(value) ? prev.parent_spot_id : null,
     }));
   };
 
@@ -740,6 +821,8 @@ function AddSpotPage() {
 
         toast.success(successMessage);
         setFormData({
+          parent_spot_id: null,
+          hierarchy_type: "standalone",
           spot_name: "",
           spot_type: "",
           short_description: "",
@@ -859,6 +942,91 @@ function AddSpotPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Hierarchy Type <span className="text-destructive">*</span>
+                  </label>
+                  <Select
+                    value={formData.hierarchy_type}
+                    onValueChange={(value) =>
+                      selectHierarchyType(value as HierarchyType)
+                    }
+                  >
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue placeholder="Choose how this spot fits in a location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HIERARCHY_TYPES.map((type) => (
+                        <SelectItem key={type.value} value={type.value}>
+                          {type.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {
+                      HIERARCHY_TYPES.find(
+                        (type) => type.value === formData.hierarchy_type,
+                      )?.description
+                    }
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Parent Location{" "}
+                    <span className="text-muted-foreground font-normal">
+                      {parentIsRequired ? "(Optional for submission)" : "(Not needed)"}
+                    </span>
+                  </label>
+                  <Select
+                    value={
+                      formData.parent_spot_id === null
+                        ? "__none__"
+                        : String(formData.parent_spot_id)
+                    }
+                    onValueChange={(value) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        parent_spot_id: value === "__none__" ? null : Number(value),
+                      }))
+                    }
+                    disabled={!parentIsRequired || parentOptionsLoading}
+                  >
+                    <SelectTrigger className="h-11 rounded-xl">
+                      <SelectValue
+                        placeholder={
+                          parentIsRequired
+                            ? "Choose a parent location"
+                            : "This hierarchy type stays top-level"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        {parentIsRequired ? "Choose later" : "No parent needed"}
+                      </SelectItem>
+                      {parentOptions.map((option) => (
+                        <SelectItem
+                          key={option.spot_id}
+                          value={String(option.spot_id)}
+                        >
+                          {option.spot_name} ·{" "}
+                          {getHierarchyTypeLabel(option.hierarchy_type)} ·{" "}
+                          {option.spot_type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {parentIsRequired
+                      ? `If you know the parent, choose it here. Otherwise leave it blank and an admin can attach this ${getHierarchyTypeLabel(formData.hierarchy_type).toLowerCase()} later. Allowed parent types: ${allowedParentHierarchyTypes
+                          .map((type) => getHierarchyTypeLabel(type))
+                          .join(" or ")}.`
+                      : "Standalone and building spots stay at the top level."}
+                  </p>
                 </div>
 
                 {/* Short Description */}
@@ -1464,54 +1632,6 @@ function AddSpotPage() {
               </div>
             </SectionCard>
 
-            {/* ─── Section 6: Advanced (collapsible) ─── */}
-            <div className="rounded-2xl border border-border bg-card shadow-sm overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="w-full flex items-center justify-between p-6 text-left hover:bg-warm-50/50 transition-colors"
-              >
-                <div>
-                  <h3 className="text-lg font-semibold text-foreground">
-                    Advanced Details
-                  </h3>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Optional extras for unusual spot setups
-                  </p>
-                </div>
-                {showAdvanced ? (
-                  <ChevronUp className="h-5 w-5 text-muted-foreground" />
-                ) : (
-                  <ChevronDown className="h-5 w-5 text-muted-foreground" />
-                )}
-              </button>
-
-              {showAdvanced && (
-                <div className="px-6 pb-6 space-y-5 border-t border-border pt-5">
-                  {/* Parent Location */}
-                  <div>
-                    <label className="block text-sm font-medium text-foreground mb-1.5">
-                      Parent Location{" "}
-                      <span className="text-muted-foreground font-normal">
-                        (Optional)
-                      </span>
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Search for a parent location..."
-                      className="h-11 rounded-xl"
-                      disabled
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Use this if this study spot belongs inside a larger place,
-                      building, or area.
-                    </p>
-                    {/* TODO: Add parent spot selector backed by spots search (parent_spot_id) */}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* ─── Submit area ─── */}
             <div className="flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-5 shadow-sm sticky bottom-4">
               <p className="text-xs text-muted-foreground hidden sm:block">
@@ -1525,6 +1645,8 @@ function AddSpotPage() {
                   className="rounded-xl"
                   onClick={() => {
                     setFormData({
+                      parent_spot_id: null,
+                      hierarchy_type: "standalone",
                       spot_name: "",
                       spot_type: "",
                       short_description: "",

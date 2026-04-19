@@ -60,6 +60,8 @@ export interface SpotMedia {
 
 export interface Spot {
   spot_id: number;
+  parent_spot_id: number | null;
+  hierarchy_type: string;
   spot_name: string;
   spot_type: string;
   short_description: string | null;
@@ -83,6 +85,19 @@ export interface Spot {
   media?: SpotMedia[];
   attributes?: SpotAttribute[];
   attribute_badges?: string[];
+  parent_spot?: {
+    spot_id: number;
+    spot_name: string;
+    hierarchy_type: string;
+    spot_type: string;
+  } | null;
+  child_spots?: Array<{
+    spot_id: number;
+    spot_name: string;
+    hierarchy_type: string;
+    spot_type: string;
+    status: "active" | "inactive" | "pending";
+  }>;
 }
 
 export interface SpotReview {

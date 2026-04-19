@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { PageContainer } from "@/components/PageContainer";
 import { StarRating } from "@/components/StarRating";
 import { ReportModal } from "@/components/ReportModal";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGoogleMapsEmbedUrl, getGoogleMapsSearchUrl } from "@/lib/google-maps-urls";
+import { getHierarchyTypeLabel } from "@/lib/hierarchy";
 import { getSpot } from "@/server/spots";
 import {
   createReview,
@@ -130,6 +131,7 @@ function SpotDetailsPage() {
   const { spotId: spotIdStr } = Route.useParams();
   const search = Route.useSearch();
   const { isLoggedIn, user } = useAuth();
+  const navigate = useNavigate();
   const spotId = Number(spotIdStr);
   const isPendingAdminPreview =
     search.adminPreview === true && search.from === "pending-spots";
@@ -149,6 +151,15 @@ function SpotDetailsPage() {
     : isAdminSpotsView
       ? "Back to All Spots"
       : "Back to Explore";
+
+  const handleBack = () => {
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+
+    navigate({ to: backTarget });
+  };
 
   const [spot, setSpot] = useState<Spot | null>(null);
   const [reviews, setReviews] = useState<SpotReview[]>([]);
@@ -353,11 +364,13 @@ function SpotDetailsPage() {
               Sign in to view full spot details, including the location address.
             </p>
             <div className="flex justify-center gap-3">
-              <Button asChild variant="outline" className="gap-2">
-                <Link to={backTarget}>
-                  <ArrowLeft className="h-4 w-4" />
-                  {backLabel}
-                </Link>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={handleBack}
+              >
+                <ArrowLeft className="h-4 w-4" />
+                {backLabel}
               </Button>
               <Button asChild>
                 <Link to="/signin">Sign In</Link>
@@ -377,11 +390,9 @@ function SpotDetailsPage() {
             <p className="text-destructive font-medium mb-2">
               {error || "Spot not found"}
             </p>
-            <Button asChild className="gap-2 mt-4">
-              <Link to={backTarget}>
-                <ArrowLeft className="h-4 w-4" />
-                {backLabel}
-              </Link>
+            <Button className="gap-2 mt-4" onClick={handleBack}>
+              <ArrowLeft className="h-4 w-4" />
+              {backLabel}
             </Button>
           </div>
         </div>
@@ -407,6 +418,7 @@ function SpotDetailsPage() {
   const canWriteReview =
     isLoggedIn && !isPendingAdminPreview && spot.status === "active";
   const currentMedia = mediaItems[currentSlide] ?? null;
+  const childSpots = spot.child_spots ?? [];
 
   const creatorInitials = getInitials(spot.creator_name);
 
@@ -414,11 +426,9 @@ function SpotDetailsPage() {
     <PageContainer className="pr-0">
       {/* Back link */}
       <div className="mb-6">
-        <Button asChild className="gap-2 rounded-xl shadow-sm">
-          <Link to={backTarget}>
-            <ArrowLeft className="h-4 w-4" />
-            {backLabel}
-          </Link>
+        <Button className="gap-2 rounded-xl shadow-sm" onClick={handleBack}>
+          <ArrowLeft className="h-4 w-4" />
+          {backLabel}
         </Button>
       </div>
 
@@ -506,6 +516,20 @@ function SpotDetailsPage() {
                     </span>
                   </div>
                 )}
+                <div className="mb-3 flex flex-wrap gap-2">
+                  <span className="rounded-full border border-border bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">
+                    {getHierarchyTypeLabel(spot.hierarchy_type)}
+                  </span>
+                  {spot.parent_spot ? (
+                    <Link
+                      to="/spot/$spotId"
+                      params={{ spotId: String(spot.parent_spot.spot_id) }}
+                      className="rounded-full border border-warm-200 bg-warm-50 px-3 py-1 text-xs font-medium text-warm-700 transition-colors hover:bg-warm-100"
+                    >
+                      Inside {spot.parent_spot.spot_name}
+                    </Link>
+                  ) : null}
+                </div>
                 {/* Rating */}
                 <div className="flex items-center gap-2 mb-4">
                   <StarRating rating={aggregatedRating} size="md" />
@@ -591,6 +615,35 @@ function SpotDetailsPage() {
                 </p>
               </div>
             )}
+
+            {childSpots.length > 0 ? (
+              <div className="mt-6 border-t border-border pt-6">
+                <h2 className="text-base font-semibold text-foreground">
+                  Spaces inside this location
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Browse floors and rooms connected to this spot.
+                </p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {childSpots.map((childSpot) => (
+                    <Link
+                      key={childSpot.spot_id}
+                      to="/spot/$spotId"
+                      params={{ spotId: String(childSpot.spot_id) }}
+                      className="rounded-2xl border border-border bg-background px-4 py-3 transition-colors hover:border-warm-300 hover:bg-warm-50"
+                    >
+                      <div className="text-sm font-semibold text-foreground">
+                        {childSpot.spot_name}
+                      </div>
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {getHierarchyTypeLabel(childSpot.hierarchy_type)} ·{" "}
+                        {SPOT_TYPE_LABELS[childSpot.spot_type] ?? childSpot.spot_type}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {/* ─── Map Section ─── */}

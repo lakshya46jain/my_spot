@@ -57,6 +57,7 @@ CREATE TABLE attribute_menu (
 CREATE TABLE spots (
     spot_id INT NOT NULL AUTO_INCREMENT,
     parent_spot_id INT DEFAULT NULL,
+    hierarchy_type VARCHAR(50) NOT NULL DEFAULT 'standalone',
     spot_type VARCHAR(50) NOT NULL,
     spot_name VARCHAR(150) NOT NULL,
     short_description TEXT,

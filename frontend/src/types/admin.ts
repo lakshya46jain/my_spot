@@ -103,6 +103,9 @@ export interface AdminAttributeRow {
 
 export interface AdminSpotRow {
   spot_id: number;
+  parent_spot_id: number | null;
+  parent_spot_name?: string | null;
+  hierarchy_type: string;
   spot_name: string;
   spot_type: string;
   primary_media_url?: string | null;
@@ -130,6 +133,9 @@ export interface AdminReportEntry {
 export interface AdminReportedSpotRow {
   spot_id: number;
   report_id: number;
+  parent_spot_id: number | null;
+  parent_spot_name?: string | null;
+  hierarchy_type: string;
   spot_name: string;
   spot_type: string;
   primary_media_url?: string | null;

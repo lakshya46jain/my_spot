@@ -159,6 +159,9 @@ type AdminRoleDbRow = RowDataPacket & {
 
 type AdminSpotDbRow = RowDataPacket & {
   spot_id: number;
+  parent_spot_id: number | null;
+  parent_spot_name: string | null;
+  hierarchy_type: string;
   spot_name: string;
   spot_type: string;
   primary_media_url: string | null;
@@ -175,6 +178,9 @@ type AdminSpotDbRow = RowDataPacket & {
 type AdminReportedSpotDbRow = RowDataPacket & {
   spot_id: number;
   report_id: number;
+  parent_spot_id: number | null;
+  parent_spot_name: string | null;
+  hierarchy_type: string;
   spot_name: string;
   spot_type: string;
   primary_media_url: string | null;
@@ -905,6 +911,9 @@ export const getAdminSpots = createServerFn({ method: "GET" }).handler(
       `
       SELECT
         s.spot_id,
+        s.parent_spot_id,
+        parent.spot_name AS parent_spot_name,
+        s.hierarchy_type,
         s.spot_name,
         s.spot_type,
         (
@@ -924,6 +933,7 @@ export const getAdminSpots = createServerFn({ method: "GET" }).handler(
         u.avatar_url AS created_by_avatar_url,
         s.status
       FROM spots s
+      LEFT JOIN spots parent ON s.parent_spot_id = parent.spot_id
       INNER JOIN users u ON s.user_id = u.user_id
       ORDER BY s.created_at DESC, s.spot_id DESC
       `,
@@ -931,6 +941,9 @@ export const getAdminSpots = createServerFn({ method: "GET" }).handler(
 
     return rows.map<AdminSpotRow>((row) => ({
       spot_id: row.spot_id,
+      parent_spot_id: row.parent_spot_id,
+      parent_spot_name: row.parent_spot_name,
+      hierarchy_type: row.hierarchy_type,
       spot_name: row.spot_name,
       spot_type: row.spot_type,
       primary_media_url: row.primary_media_url,
@@ -976,6 +989,9 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
       `
       SELECT
         s.spot_id,
+        s.parent_spot_id,
+        parent.spot_name AS parent_spot_name,
+        s.hierarchy_type,
         (
           SELECT cr2.report_id
           FROM content_report cr2
@@ -1024,10 +1040,14 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
         ) AS report_date,
         s.status AS spot_status
       FROM spots s
+      LEFT JOIN spots parent ON s.parent_spot_id = parent.spot_id
       INNER JOIN users u ON s.user_id = u.user_id
       INNER JOIN content_report cr ON cr.spot_id = s.spot_id
       GROUP BY
         s.spot_id,
+        s.parent_spot_id,
+        parent.spot_name,
+        s.hierarchy_type,
         s.spot_name,
         s.spot_type,
         s.address,
@@ -1065,6 +1085,9 @@ export const getAdminReportedSpots = createServerFn({ method: "GET" }).handler(
     return rows.map<AdminReportedSpotRow>((row) => ({
       spot_id: row.spot_id,
       report_id: row.report_id,
+      parent_spot_id: row.parent_spot_id,
+      parent_spot_name: row.parent_spot_name,
+      hierarchy_type: row.hierarchy_type,
       spot_name: row.spot_name,
       spot_type: row.spot_type,
       primary_media_url: row.primary_media_url,

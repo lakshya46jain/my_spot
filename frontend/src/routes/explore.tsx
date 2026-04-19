@@ -404,7 +404,7 @@ function ExplorePage() {
     new Set(spots.map((spot) => spot.spot_type).filter(Boolean)),
   ).sort((a, b) => a.localeCompare(b));
 
-  const visibleSpots = spots
+  const filteredSpots = spots
     .filter((spot) => {
       if (selectedSpotType !== "all" && spot.spot_type !== selectedSpotType) {
         return false;
@@ -454,6 +454,15 @@ function ExplorePage() {
           );
       }
     });
+  const childCounts = filteredSpots.reduce<Map<number, number>>((counts, spot) => {
+    if (spot.parent_spot_id !== null) {
+      counts.set(spot.parent_spot_id, (counts.get(spot.parent_spot_id) ?? 0) + 1);
+    }
+
+    return counts;
+  }, new Map());
+  const visibleSpots = filteredSpots.filter((spot) => spot.parent_spot_id === null);
+  const hiddenChildSpotCount = filteredSpots.length - visibleSpots.length;
 
   const hasActiveFilters =
     selectedSpotType !== "all" || minimumRating !== "any" || reviewedOnly;
@@ -721,7 +730,9 @@ function ExplorePage() {
                 No matching study spots
               </h3>
               <p className="text-sm text-muted-foreground mb-6">
-                Try adjusting your search, location, or filters to see more results.
+                {hiddenChildSpotCount > 0
+                  ? "We found nested spaces, but their parent locations did not match the current results. Try opening a broader building or library listing."
+                  : "Try adjusting your search, location, or filters to see more results."}
               </p>
               {hasActiveFilters ? (
                 <Button
@@ -749,11 +760,18 @@ function ExplorePage() {
           </div>
         ) : (
           <>
+            {hiddenChildSpotCount > 0 ? (
+              <div className="mb-5 rounded-2xl border border-warm-200 bg-warm-50 px-4 py-3 text-sm text-warm-800">
+                Showing top-level locations to keep results clean. Open a location to browse its{" "}
+                {hiddenChildSpotCount === 1 ? "nested space" : "nested spaces"}.
+              </div>
+            ) : null}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {visibleSpots.map((spot) => (
                 <SpotCard
                   key={spot.spot_id}
                   spot={spot}
+                  childCount={childCounts.get(spot.spot_id) ?? 0}
                   isLoggedIn={isLoggedIn}
                   showAddress={isLoggedIn}
                   isOwner={user?.userId === spot.user_id}
