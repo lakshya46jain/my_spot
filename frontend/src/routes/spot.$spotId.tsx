@@ -153,7 +153,7 @@ function SpotDetailsPage() {
       : "Back to Explore";
 
   const handleBack = () => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
+    if (search.from === "spot-details" && typeof window !== "undefined" && window.history.length > 1) {
       window.history.back();
       return;
     }
@@ -524,6 +524,7 @@ function SpotDetailsPage() {
                     <Link
                       to="/spot/$spotId"
                       params={{ spotId: String(spot.parent_spot.spot_id) }}
+                      search={{ from: "spot-details", adminPreview: false }}
                       className="rounded-full border border-warm-200 bg-warm-50 px-3 py-1 text-xs font-medium text-warm-700 transition-colors hover:bg-warm-100"
                     >
                       Inside {spot.parent_spot.spot_name}
@@ -585,15 +586,17 @@ function SpotDetailsPage() {
                 </Button>
                 {isLoggedIn && (
                   <Button
+                    asChild
                     variant="outline"
                     className="gap-2 rounded-xl"
-                    onClick={() => {
-                      // TODO: wire edit spot flow
-                      console.log("Edit spot:", spot.spot_id);
-                    }}
                   >
-                    <Pencil className="h-4 w-4" />
-                    Edit Spot
+                    <Link
+                      to="/edit-spot/$spotId"
+                      params={{ spotId: String(spot.spot_id) }}
+                    >
+                      <Pencil className="h-4 w-4" />
+                      Edit Spot
+                    </Link>
                   </Button>
                 )}
                 <Button
@@ -630,6 +633,7 @@ function SpotDetailsPage() {
                       key={childSpot.spot_id}
                       to="/spot/$spotId"
                       params={{ spotId: String(childSpot.spot_id) }}
+                      search={{ from: "spot-details", adminPreview: false }}
                       className="rounded-2xl border border-border bg-background px-4 py-3 transition-colors hover:border-warm-300 hover:bg-warm-50"
                     >
                       <div className="text-sm font-semibold text-foreground">

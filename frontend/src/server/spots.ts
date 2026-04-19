@@ -144,6 +144,30 @@ const getParentSpotOptionsSchema = z.object({
 
 type GetParentSpotOptionsInput = z.infer<typeof getParentSpotOptionsSchema>;
 
+const editableAttributeUpdateSchema = z.object({
+  spot_attribute_id: z.number().int().positive(),
+  value: z.string().trim().min(1, "Attribute value is required."),
+  notes: z.string().trim().max(255).optional().or(z.literal("")),
+});
+
+const submitSpotEditSchema = z.object({
+  userId: z.number().int().positive(),
+  spotId: z.number().int().positive(),
+  short_description: z.string().trim().optional().or(z.literal("")),
+  address: z.string().trim().min(1, "Location is required."),
+  latitude: z.string().trim().min(1, "Location coordinates are required."),
+  longitude: z.string().trim().min(1, "Location coordinates are required."),
+  operatingHours: z.array(dayHoursSchema).optional().default([]),
+  existingAttributeUpdates: z
+    .array(editableAttributeUpdateSchema)
+    .optional()
+    .default([]),
+  selectedAttributes: z.array(selectedAttributeInputSchema).optional().default([]),
+  customAttributes: z.array(customAttributeInputSchema).optional().default([]),
+});
+
+type SubmitSpotEditInput = z.infer<typeof submitSpotEditSchema>;
+
 const searchSpotsSchema = z.object({
   query: z.string().trim().optional().default(""),
   latitude: z.number().finite().optional(),
@@ -192,6 +216,10 @@ type SpotRelationshipRow = RowDataPacket & {
   hierarchy_type: HierarchyType;
   spot_type: string;
   status?: "active" | "inactive" | "pending";
+};
+
+type ExistingUserRow = RowDataPacket & {
+  user_id: number;
 };
 
 type SpotHoursRow = RowDataPacket & {
@@ -490,6 +518,27 @@ async function validateSpotHierarchy(
     );
 
     currentParentId = rows[0]?.parent_spot_id ?? null;
+  }
+}
+
+async function assertActiveUserExists(
+  executor: PoolConnection | typeof db,
+  userId: number,
+) {
+  const [rows] = await executor.execute<ExistingUserRow[]>(
+    `
+    SELECT user_id
+    FROM users
+    WHERE user_id = ?
+      AND is_active = 1
+      AND deleted_at IS NULL
+    LIMIT 1
+    `,
+    [userId],
+  );
+
+  if (rows.length === 0) {
+    throw new Error("User not found.");
   }
 }
 
@@ -1644,6 +1693,296 @@ export const createSpot = createServerFn({ method: "POST" })
     } finally {
       connection.release();
     }
+  });
+
+export const submitSpotEdit = createServerFn({ method: "POST" })
+  .inputValidator((input: SubmitSpotEditInput) => submitSpotEditSchema.parse(input))
+  .handler(async ({ data }) => {
+    await assertActiveUserExists(db, data.userId);
+
+    const latitude = parseRequiredDecimal(data.latitude, "Latitude");
+    const longitude = parseRequiredDecimal(data.longitude, "Longitude");
+    const hoursRows = buildSpotHoursRows(data.operatingHours);
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [spotRows] = await connection.execute<ExistingSpotRow[]>(
+        `
+        SELECT spot_id
+        FROM spots
+        WHERE spot_id = ?
+        LIMIT 1
+        `,
+        [data.spotId],
+      );
+
+      if (spotRows.length === 0) {
+        throw new Error("Spot not found.");
+      }
+
+      await connection.execute<ResultSetHeader>(
+        `
+        UPDATE spots
+        SET
+          short_description = ?,
+          address = ?,
+          latitude = ?,
+          longitude = ?,
+          status = 'pending',
+          last_modified = CURRENT_TIMESTAMP
+        WHERE spot_id = ?
+        `,
+        [
+          data.short_description?.trim() || null,
+          data.address.trim(),
+          latitude,
+          longitude,
+          data.spotId,
+        ],
+      );
+
+      await connection.execute(`DELETE FROM spot_hours WHERE spot_id = ?`, [
+        data.spotId,
+      ]);
+
+      if (hoursRows.length > 0) {
+        const placeholders = hoursRows.map(() => "(?, ?, ?, ?, ?)").join(", ");
+        const hourValues = hoursRows.flatMap((row) => [
+          data.spotId,
+          row.day,
+          row.open_time,
+          row.close_time,
+          row.notes,
+        ]);
+
+        await connection.execute(
+          `
+          INSERT INTO spot_hours (
+            spot_id,
+            days_of_week,
+            open_time,
+            close_time,
+            notes
+          )
+          VALUES ${placeholders}
+          `,
+          hourValues,
+        );
+      }
+
+      const existingRows = await loadSpotAttributeRows(connection, data.spotId);
+      const existingRowMap = new Map(
+        existingRows.map((row) => [row.spot_attribute_id, row]),
+      );
+      const attributeDefinitions = await getAttributeDefinitionMap(true, connection);
+      const existingAttributeIds = new Set(
+        existingRows
+          .filter((row) => row.attribute_id !== null && row.moderation_status !== "rejected")
+          .map((row) => row.attribute_id as number),
+      );
+
+      for (const update of data.existingAttributeUpdates) {
+        const row = existingRowMap.get(update.spot_attribute_id);
+
+        if (!row || row.moderation_status === "rejected") {
+          throw new Error("One of the edited attributes is no longer available.");
+        }
+
+        if (row.attribute_id !== null) {
+          const definition = attributeDefinitions.get(row.attribute_id);
+
+          if (!definition) {
+            throw new Error("One of the edited attributes is no longer available.");
+          }
+
+          const normalizedValue = validateAttributeValue({
+            name: definition.name,
+            attributeType: definition.attribute_type,
+            value: update.value,
+            allowedValues: definition.allowed_values,
+            minValue: definition.min_value,
+            maxValue: definition.max_value,
+          });
+
+          await connection.execute<ResultSetHeader>(
+            `
+            UPDATE spot_attributes
+            SET
+              value = ?,
+              notes = ?,
+              submitted_value = ?,
+              submitted_notes = ?
+            WHERE spot_attribute_id = ?
+            `,
+            [
+              normalizedValue,
+              update.notes?.trim() || null,
+              normalizedValue,
+              update.notes?.trim() || null,
+              update.spot_attribute_id,
+            ],
+          );
+        } else {
+          const attributeName = row.submitted_name?.trim();
+          const attributeType = row.submitted_type;
+
+          if (!attributeName || !attributeType) {
+            throw new Error("One of the edited attributes is no longer available.");
+          }
+
+          const normalizedAllowedValues = normalizeAllowedValues(
+            attributeType,
+            row.submitted_allowed_values,
+          );
+          const normalizedValue = validateAttributeValue({
+            name: attributeName,
+            attributeType,
+            value: update.value,
+            allowedValues: normalizedAllowedValues,
+          });
+
+          await connection.execute<ResultSetHeader>(
+            `
+            UPDATE spot_attributes
+            SET
+              value = ?,
+              notes = ?,
+              submitted_value = ?,
+              submitted_notes = ?
+            WHERE spot_attribute_id = ?
+            `,
+            [
+              normalizedValue,
+              update.notes?.trim() || null,
+              normalizedValue,
+              update.notes?.trim() || null,
+              update.spot_attribute_id,
+            ],
+          );
+        }
+      }
+
+      for (const attribute of data.selectedAttributes) {
+        if (existingAttributeIds.has(attribute.attribute_id)) {
+          throw new Error("You can only add each approved attribute once.");
+        }
+
+        const definition = attributeDefinitions.get(attribute.attribute_id);
+        if (!definition || !definition.is_active) {
+          throw new Error("One of the selected attributes is no longer available.");
+        }
+
+        const normalizedValue = validateAttributeValue({
+          name: definition.name,
+          attributeType: definition.attribute_type,
+          value: attribute.value,
+          allowedValues: definition.allowed_values,
+          minValue: definition.min_value,
+          maxValue: definition.max_value,
+        });
+
+        await connection.execute<ResultSetHeader>(
+          `
+          INSERT INTO spot_attributes (
+            attribute_id,
+            spot_id,
+            value,
+            notes,
+            submitted_value,
+            submitted_notes,
+            moderation_status
+          )
+          VALUES (?, ?, ?, ?, ?, ?, 'approved')
+          `,
+          [
+            definition.attribute_id,
+            data.spotId,
+            normalizedValue,
+            attribute.notes?.trim() || null,
+            normalizedValue,
+            attribute.notes?.trim() || null,
+          ],
+        );
+
+        existingAttributeIds.add(attribute.attribute_id);
+      }
+
+      const customNames = new Set(
+        existingRows
+          .map((row) => row.attribute_name ?? row.submitted_name ?? "")
+          .map((name) => name.trim().toLowerCase())
+          .filter((name) => name.length > 0),
+      );
+
+      for (const attribute of data.customAttributes) {
+        const normalizedName = attribute.name.trim();
+        const duplicateKey = normalizedName.toLowerCase();
+
+        if (customNames.has(duplicateKey)) {
+          throw new Error("That attribute already exists on this spot.");
+        }
+
+        customNames.add(duplicateKey);
+
+        const normalizedAllowedValues =
+          attribute.attribute_type === "single_choice"
+            ? normalizeAllowedValues(
+                "single_choice",
+                attribute.suggested_allowed_values ?? [],
+              )
+            : [];
+        const normalizedValue = validateAttributeValue({
+          name: normalizedName,
+          attributeType: attribute.attribute_type,
+          value: attribute.value,
+          allowedValues: normalizedAllowedValues,
+        });
+
+        await connection.execute<ResultSetHeader>(
+          `
+          INSERT INTO spot_attributes (
+            attribute_id,
+            spot_id,
+            value,
+            notes,
+            submitted_name,
+            submitted_type,
+            submitted_value,
+            submitted_notes,
+            submitted_allowed_values_json,
+            moderation_status
+          )
+          VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+          `,
+          [
+            data.spotId,
+            normalizedValue,
+            attribute.notes?.trim() || null,
+            normalizedName,
+            attribute.attribute_type,
+            normalizedValue,
+            attribute.notes?.trim() || null,
+            normalizedAllowedValues.length > 0
+              ? JSON.stringify(normalizedAllowedValues)
+              : null,
+          ],
+        );
+      }
+
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+
+    return {
+      success: true,
+      message: "Your edits were submitted for review.",
+    };
   });
 
 export const updateSpot = createServerFn({ method: "POST" })

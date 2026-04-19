@@ -780,10 +780,12 @@ function ExplorePage() {
                     const target = visibleSpots.find((s) => s.spot_id === spotId);
                     if (target) setDeleteTarget(target);
                   }}
-                  onEdit={(spotId) => {
-                    // TODO: Navigate to edit page or open edit modal
-                    console.log("Edit spot:", spotId);
-                  }}
+                  onEdit={(spotId) =>
+                    navigate({
+                      to: "/edit-spot/$spotId",
+                      params: { spotId: String(spotId) },
+                    })
+                  }
                   onViewDetails={handleViewDetails}
                   onToggleFavorite={handleToggleFavorite}
                 />

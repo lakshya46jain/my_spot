@@ -20,6 +20,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AddSpotRouteImport } from './routes/add-spot'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SpotSpotIdRouteImport } from './routes/spot.$spotId'
+import { Route as EditSpotSpotIdRouteImport } from './routes/edit-spot.$spotId'
 import { Route as AdminUsersRouteImport } from './routes/admin.users'
 import { Route as AdminSpotsRouteImport } from './routes/admin.spots'
 import { Route as AdminRolesRouteImport } from './routes/admin.roles'
@@ -83,6 +84,11 @@ const IndexRoute = IndexRouteImport.update({
 const SpotSpotIdRoute = SpotSpotIdRouteImport.update({
   id: '/spot/$spotId',
   path: '/spot/$spotId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const EditSpotSpotIdRoute = EditSpotSpotIdRouteImport.update({
+  id: '/edit-spot/$spotId',
+  path: '/edit-spot/$spotId',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminUsersRoute = AdminUsersRouteImport.update({
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/spots': typeof AdminSpotsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/edit-spot/$spotId': typeof EditSpotSpotIdRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesByTo {
@@ -173,6 +180,7 @@ export interface FileRoutesByTo {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/spots': typeof AdminSpotsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/edit-spot/$spotId': typeof EditSpotSpotIdRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRoutesById {
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/admin/roles': typeof AdminRolesRoute
   '/admin/spots': typeof AdminSpotsRoute
   '/admin/users': typeof AdminUsersRoute
+  '/edit-spot/$spotId': typeof EditSpotSpotIdRoute
   '/spot/$spotId': typeof SpotSpotIdRoute
 }
 export interface FileRouteTypes {
@@ -220,6 +229,7 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/spots'
     | '/admin/users'
+    | '/edit-spot/$spotId'
     | '/spot/$spotId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/spots'
     | '/admin/users'
+    | '/edit-spot/$spotId'
     | '/spot/$spotId'
   id:
     | '__root__'
@@ -264,6 +275,7 @@ export interface FileRouteTypes {
     | '/admin/roles'
     | '/admin/spots'
     | '/admin/users'
+    | '/edit-spot/$spotId'
     | '/spot/$spotId'
   fileRoutesById: FileRoutesById
 }
@@ -278,6 +290,7 @@ export interface RootRouteChildren {
   RegisterRoute: typeof RegisterRoute
   SigninRoute: typeof SigninRoute
   UpdatePasswordRoute: typeof UpdatePasswordRoute
+  EditSpotSpotIdRoute: typeof EditSpotSpotIdRoute
   SpotSpotIdRoute: typeof SpotSpotIdRoute
 }
 
@@ -358,6 +371,13 @@ declare module '@tanstack/react-router' {
       path: '/spot/$spotId'
       fullPath: '/spot/$spotId'
       preLoaderRoute: typeof SpotSpotIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/edit-spot/$spotId': {
+      id: '/edit-spot/$spotId'
+      path: '/edit-spot/$spotId'
+      fullPath: '/edit-spot/$spotId'
+      preLoaderRoute: typeof EditSpotSpotIdRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/users': {
@@ -463,6 +483,7 @@ const rootRouteChildren: RootRouteChildren = {
   RegisterRoute: RegisterRoute,
   SigninRoute: SigninRoute,
   UpdatePasswordRoute: UpdatePasswordRoute,
+  EditSpotSpotIdRoute: EditSpotSpotIdRoute,
   SpotSpotIdRoute: SpotSpotIdRoute,
 }
 export const routeTree = rootRouteImport

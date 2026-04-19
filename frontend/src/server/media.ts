@@ -66,20 +66,19 @@ async function assertUserExists(userId: number) {
   }
 }
 
-async function assertSpotExistsForUser(spotId: number, userId: number) {
+async function assertSpotExists(spotId: number) {
   const [rows] = await db.execute<ExistingSpotRow[]>(
     `
     SELECT spot_id
     FROM spots
     WHERE spot_id = ?
-      AND user_id = ?
     LIMIT 1
     `,
-    [spotId, userId],
+    [spotId],
   );
 
   if (rows.length === 0) {
-    throw new Error("Spot not found for this user.");
+    throw new Error("Spot not found.");
   }
 }
 
@@ -139,7 +138,7 @@ export const uploadSpotMedia = createServerFn({ method: "POST" })
   )
   .handler(async ({ data }) => {
     await assertUserExists(data.userId);
-    await assertSpotExistsForUser(data.spotId, data.userId);
+    await assertSpotExists(data.spotId);
 
     const uploads = await Promise.all(
       data.images.map(async (image, index) => {
