@@ -102,7 +102,7 @@ These tables support authentication, saved spots, user-submitted content, operat
 Create `frontend/.env.local` and add the variables your setup needs:
 
 ```env
-MYSQL_PUBLIC_URL=mysql://username:password@localhost:3306/myspot
+MYSQL_PUBLIC_URL=mysql://username:password@localhost:3306/railway
 
 VITE_GOOGLE_MAPS_API_KEY=your_google_maps_api_key
 
@@ -143,32 +143,34 @@ npm install
 
 You have two SQL entry points in this repo:
 
-- `database/schema.sql` creates a local `myspot` schema
-- `database/reset_schema.sql` recreates a `railway` schema
+- `database/schema.sql` creates the `railway` schema and core tables
+- `database/reset_schema.sql` drops and recreates the same `railway` schema from scratch
 
-Important: `database/seed.sql` currently starts with `USE myspot;`, so your schema name and your `MYSQL_PUBLIC_URL` must match the script you choose to run.
+Important: the SQL scripts in this repo currently target the `railway` schema, so your `MYSQL_PUBLIC_URL` should point to that same database name.
 
-#### Option A: local MySQL using `myspot`
+#### Option A: local MySQL using `railway`
 
 From the project root:
 
 ```bash
 mysql -u root -p < database/schema.sql
-mysql -u root -p myspot < database/seed.sql
 ```
 
 Then set:
 
 ```env
-MYSQL_PUBLIC_URL=mysql://root:yourpassword@localhost:3306/myspot
+MYSQL_PUBLIC_URL=mysql://root:yourpassword@localhost:3306/railway
 ```
 
-#### Option B: Railway-style setup
+Optional: `database/seed.sql` is intended to provide broader sample data, but it is not fully synchronized with the current schema. Treat it as a development seed script that needs cleanup before relying on it as a guaranteed setup step.
 
-Use `database/reset_schema.sql` if you want to rebuild a `railway` schema. If you also want the sample seed data, either:
+#### Option B: rebuild the schema during development
 
-- update the first line of `database/seed.sql` to use the same schema name, or
-- create/use a `myspot` schema instead and point `MYSQL_PUBLIC_URL` there
+Use `database/reset_schema.sql` if you want to fully rebuild the `railway` schema during development:
+
+```bash
+mysql -u root -p < database/reset_schema.sql
+```
 
 ### 4. Configure Google Maps
 
@@ -203,6 +205,7 @@ From `frontend/`:
 ```bash
 npm run dev
 npm run build
+npm run build:dev
 npm run preview
 npm run lint
 ```
@@ -245,4 +248,4 @@ The `documentation/` folder includes project deliverables such as:
 ## Current notes
 
 - The README previously referenced `database/README.md`, but that file is not present in the repository.
-- The SQL scripts currently use two schema names, `myspot` and `railway`. Keeping your schema name consistent across SQL scripts and `MYSQL_PUBLIC_URL` will save setup time.
+- The SQL scripts in the repository currently target the `railway` schema. Keep your `MYSQL_PUBLIC_URL` aligned with that schema name during local setup.
